@@ -19,7 +19,7 @@
     "noFallthroughCasesInSwitch": true,
     "paths": {
       "@/*": ["src/*"],
-      "@helm/shared": ["../shared/src"]
+      "@helm/shared": ["../ai/src"]
     }
   },
   "include": ["src/**/*"]

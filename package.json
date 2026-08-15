@@ -4,7 +4,7 @@
   "private": true,
   "description": "Helm — AI Operating System for Solo Founders",
   "workspaces": [
-    "packages/*"
+    "*"
   ],
   "scripts": {
     "dev:backend": "npm run start:dev -w @helm/backend",
