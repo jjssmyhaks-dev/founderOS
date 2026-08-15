@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
+import { MemoryModule } from '../memory/memory.module';
 import { LlmModule } from '../llm/llm.module';
 import { EventModule } from '../events/events.module';
 import { ActivityModule } from '../activity/activity.module';
@@ -16,7 +17,7 @@ import { ScheduledTriggerService } from './scheduled-trigger.service';
 import { AgentRuntimeController } from './agent-runtime.controller';
 
 @Module({
-  imports: [PrismaModule, LlmModule, EventModule, ActivityModule],
+  imports: [PrismaModule, MemoryModule, LlmModule, EventModule, ActivityModule],
   providers: [
     AgentRuntimeService,
     ToolRegistryService,

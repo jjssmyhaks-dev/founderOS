@@ -173,21 +173,36 @@ model ConnectorDefinition {
 }
 
 model ContextNote {
-  id            String   @id @default(uuid()) @db.Uuid
-  founderId     String   @db.Uuid
-  category      String
-  content       String
-  embeddingId   String?
-  embedding     Unsupported("vector(1536)")?
-  sourceAgentId String?  @db.Uuid
-  sourceTaskId  String?  @db.Uuid
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                String   @id @default(uuid()) @db.Uuid
+  founderId         String   @db.Uuid
+  layer             String?
+  category          String
+  memoryType        String   @default("business_fact")
+  content           String
+  embeddingId       String?
+  embedding         Unsupported("vector(1536)")?
+  confidence        String   @default("inferred")
+  status            String   @default("active")
+  supersededBy      String?  @db.Uuid
+  sourceAgentId     String?  @db.Uuid
+  sourceTraceId     String?  @db.Uuid
+  sourceTaskId      String?  @db.Uuid
+  referenceCount    Int      @default(0)
+  lastReferencedAt  DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   founder Founder @relation(fields: [founderId], references: [id], onDelete: Cascade)
 
   @@index([founderId])
   @@index([category])
+  @@index([memoryType])
+  @@index([confidence])
+  @@index([status])
+  @@index([layer])
+  @@index([lastReferencedAt])
+  @@index([founderId, status])
+  @@index([founderId, memoryType])
 }
 
 model ActivityLog {

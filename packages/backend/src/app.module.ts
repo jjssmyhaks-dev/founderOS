@@ -20,6 +20,7 @@ import { OperationsLayerModule } from './layers/operations/operations-layer.modu
 import { FinanceLayerModule } from './layers/finance/finance-layer.module';
 import { AgentRuntimeModule } from './agent-runtime/agent-runtime.module';
 import { ObservabilityModule } from './observability/observability.module';
+import { MemoryModule } from './memory/memory.module';
 
 @Module({
   imports: [

@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { MemoryService } from '../memory/memory.service';
 import { EventService } from '../events/events.service';
 import { TaskService } from '../tasks/tasks.service';
 import { ActivityService } from '../activity/activity.service';

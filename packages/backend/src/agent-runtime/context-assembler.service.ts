@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TokenBudgetService } from './token-budget.service';
+import { MemoryService } from '../memory/memory.service';
 import { AgentTask, AgentConfig } from './types';
 
 @Injectable()
@@ -9,6 +10,7 @@ export class ContextAssemblerService {
   constructor(
     private prisma: PrismaService,
     private tokenBudget: TokenBudgetService,
+    private memory: MemoryService,
   ) {}
 
   async assemble(task: AgentTask, config: AgentConfig): Promise<string> {
@@ -22,16 +24,20 @@ export class ContextAssemblerService {
     // Priority 1: task goal
     parts.push({ content: 'Goal: ' + task.goal + ' | Trace: ' + (task.traceId || task.taskId), priority: 1 });
 
-    // Priority 2: relevant context notes
-    if (task.contextRefs.length > 0) {
-      const notes = await this.prisma.contextNote.findMany({
-        where: { id: { in: task.contextRefs } },
-        orderBy: { updatedAt: 'desc' },
-        take: 10,
-      });
-      if (notes.length > 0) {
-        parts.push({ content: '--- RELEVANT CONTEXT ---' + String.fromCharCode(10) + notes.map(n => '[' + n.category + '] ' + n.content).join(String.fromCharCode(10)), priority: 2 });
-      }
+    // Priority 2: memory retrieval (type-aware, boosted strategic_goal/constraint)
+    const memories = await this.memory.retrieveMemory({
+      founderId: task.founderId,
+      query: task.goal,
+      layer: (config.layer as any) || null,
+      maxResults: 8,
+    });
+    if (memories.length > 0) {
+      const memText = memories.map(m => {
+        const conf = '[' + (m as any).confidence + '] ';
+        const type = '[' + (m as any).memoryType + '] ';
+        return type + conf + (m as any).content;
+      }).join(String.fromCharCode(10));
+      parts.push({ content: '--- MEMORY ---' + String.fromCharCode(10) + memText, priority: 2 });
     }
 
     // Priority 3: recent activity
