@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { LlmService } from '../llm/llm.service';
+import { TraceService } from '../observability/trace.service';
 import { EventService } from '../events/events.service';
 import { TaskService } from '../tasks/tasks.service';
 import { ContextService } from '../context/context.service';
@@ -102,3 +103,4 @@ export class OrchestrationService {
     };
   }
 }
+

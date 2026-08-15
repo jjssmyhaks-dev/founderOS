@@ -86,6 +86,7 @@ model Task {
   agent    Agent?     @relation(fields: [agentId], references: [id], onDelete: SetNull)
   approvals Approval[]
   steps    TaskStep[]
+  traces   Trace[]
 
   @@index([founderId])
   @@index([status])
@@ -254,5 +255,79 @@ model ChatMessage {
   @@index([founderId])
   @@index([sessionId])
 }
+model Trace {
+  id          String    @id @default(uuid()) @db.Uuid
+  originType  String
+  originRef   String?
+  founderId   String    @db.Uuid
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  status      String    @default("in_progress")
+  createdAt   DateTime  @default(now())
 
+  tasks Task[]
+ spans Span[]
 
+  @@index([founderId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model Span {
+  id             String    @id @default(uuid()) @db.Uuid
+  traceId        String    @db.Uuid
+  parentSpanId   String?   @db.Uuid
+  agentId        String?   @db.Uuid
+  taskId         String?   @db.Uuid
+  spanType       String
+  status         String    @default("pending")
+  inputSummary   String?
+  outputSummary  String?
+  fullPayloadRef String?
+  tokensUsed     Int?
+  costEstimate   Float?
+  error          String?
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+
+  trace Trace @relation(fields: [traceId], references: [id], onDelete: Cascade)
+
+  @@index([traceId])
+  @@index([agentId])
+  @@index([spanType])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model EvalRun {
+  id               String   @id @default(uuid()) @db.Uuid
+  agentId          String
+  testSetVersion   String
+  totalTests       Int      @default(0)
+  passedTests      Int      @default(0)
+  failedTests      Int      @default(0)
+  score            Float?
+  passed           Boolean  @default(false)
+  modelVersion     String?
+  promptVersion    String?
+  triggeredBy      String   @default("scheduled")
+  createdAt        DateTime @default(now())
+
+  @@index([agentId])
+  @@index([createdAt])
+}
+
+model EvalTestCase {
+  id              String   @id @default(uuid()) @db.Uuid
+  agentId         String
+  testSetVersion  String   @default("v1")
+  name            String
+  input           Json
+  expectedOutput  Json?
+  evalType        String   @default("golden")
+  rubric          Json?
+  createdAt       DateTime @default(now())
+
+  @@unique([agentId, name])
+  @@index([agentId])
+}

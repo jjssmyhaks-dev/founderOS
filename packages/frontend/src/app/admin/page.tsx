@@ -1,137 +1,279 @@
 'use client';
 import { useState, useEffect } from 'react';
 
-interface AgentStats {
-  agentId: string;
-  totalTasks: number;
-  completedTasks: number;
-  failedTasks: number;
-  approvalPending: number;
-  avgStepsPerTask: number;
-  avgDurationMs: number;
-}
-
-interface ConnectorHealth {
-  name: string;
-  status: string;
-  lastHealthCheck: string | null;
-}
-
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+type Tab = 'overview' | 'traces' | 'cost' | 'leaderboard' | 'evals';
+
+interface Trace {
+  id: string; originType: string; originRef: string | null;
+  founderId: string; startedAt: string; endedAt: string | null; status: string;
+}
+
+interface TraceDetail extends Trace {
+  spans: Array<{
+    id: string; spanType: string; status: string; agentId: string | null;
+    inputSummary: string | null; outputSummary: string | null;
+    error: string | null; tokensUsed: number | null;
+    costEstimate: number | null; startedAt: string; endedAt: string | null;
+  }>;
+}
+
+interface AgentMetric {
+  agentId: string; period: string; totalSpans: number;
+  successRate: number; failed: number; avgDurationMs: number;
+  totalTokens: number; totalCost: number;
+}
+
+interface LayerMetric {
+  layer: string; total: number; success: number; failed: number;
+  cost: number; tokens: number; successRate: number;
+}
+
+interface LeaderboardEntry {
+  agentId: string; reliability: number; weeklyCost: number;
+  totalTasks: number; failures: number; escalationRate: number;
+}
+
+interface EvalRun {
+  id: string; agentId: string; testSetVersion: string;
+  totalTests: number; passedTests: number; failedTests: number;
+  score: number | null; passed: boolean; triggeredBy: string; createdAt: string;
+}
+
+const spanTypeColors: Record<string, string> = {
+  task: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  reasoning_step: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  tool_call: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  handoff: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  approval_wait: 'bg-red-500/20 text-red-400 border-red-500/30',
+  event_publish: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+};
+
+const spanTypeLabels: Record<string, string> = {
+  task: 'Task', reasoning_step: 'Reasoning', tool_call: 'Tool Call',
+  handoff: 'Handoff', approval_wait: 'Approval Wait', event_publish: 'Event',
+};
+
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<AgentStats[]>([]);
-  const [connectors, setConnectors] = useState<ConnectorHealth[]>([]);
+  const [tab, setTab] = useState<Tab>('overview');
+  const [traces, setTraces] = useState<Trace[]>([]);
+  const [selectedTrace, setSelectedTrace] = useState<TraceDetail | null>(null);
+  const [agentMetrics, setAgentMetrics] = useState<AgentMetric[]>([]);
+  const [layerMetrics, setLayerMetrics] = useState<LayerMetric[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [evalHistory, setEvalHistory] = useState<EvalRun[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'agents' | 'connectors' | 'triggers'>('agents');
 
   useEffect(() => {
     Promise.all([
-      fetch(API + '/agent-runtime/stats').then(r => r.json()).catch(() => []),
-      fetch(API + '/connectors').then(r => r.json()).catch(() => []),
-    ]).then(([s, c]) => {
-      setStats(s.agents || s || []);
-      setConnectors(Array.isArray(c) ? c : c.connectors || []);
+      fetch(API + '/observability/metrics/layers?hours=168').then(r => r.json()).catch(() => []),
+      fetch(API + '/observability/leaderboard').then(r => r.json()).catch(() => []),
+      fetch(API + '/observability/eval/history').then(r => r.json()).catch(() => []),
+    ]).then(([lm, lb, ev]) => {
+      setLayerMetrics(lm); setLeaderboard(lb); setEvalHistory(ev);
       setLoading(false);
     });
   }, []);
 
-  if (loading) return <div className="flex items-center justify-center h-screen text-gray-400">Loading dashboard...</div>;
+  const loadTraces = async () => {
+    const r = await fetch(API + '/observability/traces?limit=50');
+    setTraces(await r.json());
+  };
+
+  const loadTraceDetail = async (id: string) => {
+    const r = await fetch(API + '/observability/traces/' + id);
+    setSelectedTrace(await r.json());
+  };
+
+  const loadAgentMetrics = async (agentId: string) => {
+    const r = await fetch(API + '/observability/metrics/agents?agentId=' + agentId + '&hours=168');
+    setAgentMetrics(await r.json());
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-screen text-gray-400">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       <header className="border-b border-gray-800 px-6 py-4">
-        <h1 className="text-xl font-bold">Admin Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">Agent performance, connector health, and system observability</p>
+        <h1 className="text-xl font-bold">Observability Dashboard</h1>
+        <p className="text-sm text-gray-500 mt-1">Traces, metrics, cost, agent leaderboard, and evaluations</p>
       </header>
 
-      <div className="px-6 py-4 flex gap-2 border-b border-gray-800">
-        {(['agents', 'connectors', 'triggers'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={"px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors " + (tab === t ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
-            {t}
+      <div className="px-6 py-3 flex gap-1 border-b border-gray-800 overflow-x-auto">
+        {([['overview', 'Overview'], ['traces', 'Traces'], ['cost', 'Cost'], ['leaderboard', 'Leaderboard'], ['evals', 'Evals']] as [Tab, string][]).map(([t, label]) => (
+          <button key={t} onClick={() => { setTab(t as Tab); if (t === 'traces') loadTraces(); }}
+            className={"px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors " + (tab === t ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700')}>
+            {label}
           </button>
         ))}
       </div>
 
       <div className="p-6">
-        {tab === 'agents' && (
-          <div>
-            <h2 className="text-lg font-semibold mb-4">Agent Performance</h2>
-            {stats.length === 0 ? (
-              <div className="text-gray-500 bg-gray-900 rounded-lg p-8 text-center">No task data yet. Run some agent tasks to see stats here.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead><tr className="text-left text-gray-500 border-b border-gray-800">
-                    <th className="pb-3 pr-4">Agent</th>
-                    <th className="pb-3 pr-4">Total</th>
-                    <th className="pb-3 pr-4">Completed</th>
-                    <th className="pb-3 pr-4">Failed</th>
-                    <th className="pb-3 pr-4">Approval</th>
-                    <th className="pb-3 pr-4">Avg Steps</th>
-                    <th className="pb-3 pr-4">Avg Duration</th>
-                    <th className="pb-3">Success Rate</th>
-                  </tr></thead>
-                  <tbody>{stats.map((s, i) => {
-                    const rate = s.totalTasks > 0 ? Math.round((s.completedTasks / s.totalTasks) * 100) : 0;
-                    return (<tr key={i} className="border-b border-gray-800/50 hover:bg-gray-900/50">
-                      <td className="py-3 pr-4 font-mono text-xs text-blue-400">{s.agentId.split('.').pop()}</td>
-                      <td className="py-3 pr-4">{s.totalTasks}</td>
-                      <td className="py-3 pr-4 text-emerald-400">{s.completedTasks}</td>
-                      <td className="py-3 pr-4 text-red-400">{s.failedTasks}</td>
-                      <td className="py-3 pr-4 text-amber-400">{s.approvalPending}</td>
-                      <td className="py-3 pr-4">{s.avgStepsPerTask.toFixed(1)}</td>
-                      <td className="py-3 pr-4">{(s.avgDurationMs / 1000).toFixed(1)}s</td>
-                      <td className="py-3"><span className={"px-2 py-0.5 rounded text-xs font-medium " + (rate >= 80 ? 'bg-emerald-500/20 text-emerald-400' : rate >= 50 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400')}>{rate}%</span></td>
-                    </tr>);
-                  })}</tbody>
-                </table>
-              </div>
+        {/* OVERVIEW */}
+        {tab === 'overview' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {layerMetrics.map((l, i) => {
+                const colors = ['bg-blue-500/20 text-blue-400', 'bg-emerald-500/20 text-emerald-400', 'bg-amber-500/20 text-amber-400', 'bg-purple-500/20 text-purple-400'];
+                return (
+                  <div key={i} className={"rounded-lg border border-gray-800 p-4 " + colors[i % 4].split(' ')[0]}>
+                    <div className="text-xs text-gray-500 mb-1">{l.layer}</div>
+                    <div className="text-2xl font-bold">{l.total}</div>
+                    <div className="text-xs text-gray-500 mt-1">{l.successRate}% success | ${l.cost.toFixed(2)} cost</div>
+                  </div>
+                );
+              })}
+            </div>
+            <h2 className="text-lg font-semibold">Recent Evaluations</h2>
+            {evalHistory.length === 0 ? <div className="text-gray-500 bg-gray-900 rounded-lg p-6 text-center">No eval runs yet.</div> : (
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="text-left text-gray-500 border-b border-gray-800"><th className="pb-2 pr-4">Agent</th><th className="pb-2 pr-4">Score</th><th className="pb-2 pr-4">Tests</th><th className="pb-2 pr-4">Status</th><th className="pb-2">When</th></tr></thead>
+                <tbody>{evalHistory.slice(0, 10).map((e, i) => (
+                  <tr key={i} className="border-b border-gray-800/50">
+                    <td className="py-2 pr-4 font-mono text-xs text-blue-400">{e.agentId.split('.').pop()}</td>
+                    <td className="py-2 pr-4"><span className={"px-2 py-0.5 rounded text-xs font-medium " + (e.score && e.score >= 70 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400')}>{e.score != null ? e.score + '%' : 'N/A'}</span></td>
+                    <td className="py-2 pr-4">{e.passedTests}/{e.totalTests}</td>
+                    <td className="py-2 pr-4">{e.passed ? <span className="text-emerald-400">PASS</span> : <span className="text-red-400">FAIL</span>}</td>
+                    <td className="py-2 text-xs text-gray-500">{new Date(e.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
             )}
           </div>
         )}
 
-        {tab === 'connectors' && (
+        {/* TRACES */}
+        {tab === 'traces' && !selectedTrace && (
           <div>
-            <h2 className="text-lg font-semibold mb-4">Connector Health</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {connectors.length === 0 ? (
-                <div className="text-gray-500 bg-gray-900 rounded-lg p-8 text-center col-span-full">No connectors configured.</div>
-              ) : connectors.map((c, i) => (
-                <div key={i} className="bg-gray-900 rounded-lg border border-gray-800 p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className={"w-2.5 h-2.5 rounded-full " + (c.status === 'CONNECTED' ? 'bg-emerald-400' : 'bg-red-400')} />
-                    <span className="font-medium">{c.name}</span>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Traces</h2>
+              <button onClick={loadTraces} className="px-3 py-1.5 bg-gray-800 rounded text-sm hover:bg-gray-700">Refresh</button>
+            </div>
+            {traces.length === 0 ? <div className="text-gray-500 bg-gray-900 rounded-lg p-6 text-center">No traces yet. Run some agent tasks.</div> : (
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="text-left text-gray-500 border-b border-gray-800"><th className="pb-2 pr-4">Trace ID</th><th className="pb-2 pr-4">Origin</th><th className="pb-2 pr-4">Status</th><th className="pb-2 pr-4">Started</th><th className="pb-2 pr-4">Duration</th><th className="pb-2">Spans</th></tr></thead>
+                <tbody>{traces.map((t, i) => (
+                  <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-900/50 cursor-pointer" onClick={() => loadTraceDetail(t.id)}>
+                    <td className="py-2 pr-4 font-mono text-xs">{t.id.substring(0, 12)}...</td>
+                    <td className="py-2 pr-4 text-xs">{t.originType}</td>
+                    <td className="py-2 pr-4"><span className={"px-2 py-0.5 rounded text-xs " + (t.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : t.status === 'failed' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400')}>{t.status}</span></td>
+                    <td className="py-2 pr-4 text-xs text-gray-500">{new Date(t.startedAt).toLocaleString()}</td>
+                    <td className="py-2 pr-4 text-xs">{t.endedAt ? Math.round((new Date(t.endedAt).getTime() - new Date(t.startedAt).getTime()) / 1000) + 's' : '...'}</td>
+                    <td className="py-2 text-xs text-gray-500">View</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )}
+          </div>
+        )}
+
+        {/* TRACE DETAIL */}
+        {tab === 'traces' && selectedTrace && (
+          <div>
+            <button onClick={() => setSelectedTrace(null)} className="text-blue-400 text-sm mb-4 hover:underline">Back to traces</button>
+            <div className="flex items-center gap-3 mb-4">
+              <span className={"px-3 py-1 rounded-lg text-sm font-medium " + (selectedTrace.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400')}>{selectedTrace.status}</span>
+              <span className="text-xs text-gray-500">{selectedTrace.originType}</span>
+              <span className="font-mono text-xs text-gray-600">{selectedTrace.id}</span>
+            </div>
+            <h2 className="text-sm font-medium text-gray-400 mb-3">Span Waterfall ({selectedTrace.spans.length} spans)</h2>
+            <div className="space-y-1">
+              {selectedTrace.spans.map((s, i) => {
+                const dur = s.startedAt && s.endedAt ? new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime() : 0;
+                const indent = s.spanType === 'tool_call' ? 'ml-6' : '';
+                return (
+                  <div key={i} className={"flex items-center gap-3 px-3 py-2 rounded " + indent}>
+                    <span className={"w-2 h-2 rounded-full shrink-0 " + (s.status === 'success' ? 'bg-emerald-400' : s.status === 'failure' ? 'bg-red-400' : 'bg-amber-400')}></span>
+                    <span className={"px-2 py-0.5 rounded text-xs border " + (spanTypeColors[s.spanType] || 'bg-gray-800 text-gray-400 border-gray-700')}>{spanTypeLabels[s.spanType] || s.spanType}</span>
+                    {s.agentId && <span className="text-xs text-gray-600">{s.agentId.split('.').pop()}</span>}
+                    {s.outputSummary && <span className="text-xs text-gray-400 truncate max-w-xs">{s.outputSummary.substring(0, 80)}</span>}
+                    {s.error && <span className="text-xs text-red-400">{s.error}</span>}
+                    {s.tokensUsed && <span className="text-xs text-gray-600 ml-auto">{s.tokensUsed} tok</span>}
+                    <span className="text-xs text-gray-600">{dur}ms</span>
                   </div>
-                  <div className="text-xs text-gray-500">Status: {c.status}</div>
-                  {c.lastHealthCheck && <div className="text-xs text-gray-600 mt-1">Last check: {new Date(c.lastHealthCheck).toLocaleString()}</div>}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
 
-        {tab === 'triggers' && (
-          <div>
-            <h2 className="text-lg font-semibold mb-4">Scheduled Triggers</h2>
-            <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                  <div><div className="font-medium">Daily Competitor Scan</div><div className="text-xs text-gray-500">research.competitor_intel</div></div>
-                  <div className="text-right"><div className="text-xs font-mono text-blue-400">0 9 * * 1-5</div><div className="text-xs text-gray-500">Mon-Fri 9:00 AM</div></div>
+        {/* COST */}
+        {tab === 'cost' && (
+          <div className="space-y-6">
+            <h2 className="text-lg font-semibold">Cost by Layer (7 days)</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {layerMetrics.map((l, i) => (
+                <div key={i} className="bg-gray-900 rounded-lg border border-gray-800 p-4">
+                  <div className="text-xs text-gray-500 mb-1">{l.layer}</div>
+                  <div className="text-xl font-bold">${l.cost.toFixed(2)}</div>
+                  <div className="text-xs text-gray-600 mt-1">{l.tokens.toLocaleString()} tokens across {l.total} spans</div>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                  <div><div className="font-medium">Weekly Content Review</div><div className="text-xs text-gray-500">marketing.performance_marketer</div></div>
-                  <div className="text-right"><div className="text-xs font-mono text-blue-400">0 10 * * 0</div><div className="text-xs text-gray-500">Sunday 10:00 AM</div></div>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                  <div><div className="font-medium">Daily Cashflow Check</div><div className="text-xs text-gray-500">finance.bookkeeper</div></div>
-                  <div className="text-right"><div className="text-xs font-mono text-blue-400">0 8 * * 1-6</div><div className="text-xs text-gray-500">Mon-Sat 8:00 AM</div></div>
-                </div>
-              </div>
-              <p className="text-xs text-gray-600 mt-4">Triggers execute via the AgentRuntimeService. Production deployment should use @nestjs/schedule for cron-based firing.</p>
+              ))}
             </div>
+            <h2 className="text-lg font-semibold">Cost by Agent (Leaderboard)</h2>
+            {leaderboard.length === 0 ? <div className="text-gray-500">No data</div> : (
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="text-left text-gray-500 border-b border-gray-800"><th className="pb-2 pr-4">Agent</th><th className="pb-2 pr-4">Weekly Cost</th><th className="pb-2 pr-4">Tasks</th><th className="pb-2 pr-4">Failures</th><th className="pb-2">Reliability</th></tr></thead>
+                <tbody>{leaderboard.map((e, i) => (
+                  <tr key={i} className="border-b border-gray-800/50">
+                    <td className="py-2 pr-4 font-mono text-xs text-blue-400">{e.agentId.split('.').pop()}</td>
+                    <td className="py-2 pr-4">${e.weeklyCost.toFixed(2)}</td>
+                    <td className="py-2 pr-4">{e.totalTasks}</td>
+                    <td className="py-2 pr-4 text-red-400">{e.failures}</td>
+                    <td className="py-2"><span className={"px-2 py-0.5 rounded text-xs font-medium " + (e.reliability >= 80 ? 'bg-emerald-500/20 text-emerald-400' : e.reliability >= 50 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400')}>{e.reliability}%</span></td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )}
+          </div>
+        )}
+
+        {/* LEADERBOARD */}
+        {tab === 'leaderboard' && (
+          <div>
+            <h2 className="text-lg font-semibold mb-4">Agent Leaderboard (7 days)</h2>
+            <p className="text-sm text-gray-500 mb-4">Reliability, cost efficiency, and escalation rates — informs prompt tuning and model upgrades.</p>
+            {leaderboard.length === 0 ? <div className="text-gray-500 bg-gray-900 rounded-lg p-6 text-center">No data yet.</div> : (
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="text-left text-gray-500 border-b border-gray-800"><th className="pb-2 pr-4">#</th><th className="pb-2 pr-4">Agent</th><th className="pb-2 pr-4">Reliability</th><th className="pb-2 pr-4">Weekly Cost</th><th className="pb-2 pr-4">Tasks</th><th className="pb-2 pr-4">Failures</th><th className="pb-2">Escalation Rate</th></tr></thead>
+                <tbody>{leaderboard.map((e, i) => (
+                  <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-900/50">
+                    <td className="py-3 pr-4 text-gray-500">{i + 1}</td>
+                    <td className="py-3 pr-4 font-mono text-xs text-blue-400">{e.agentId}</td>
+                    <td className="py-3 pr-4"><span className={"px-2 py-0.5 rounded text-xs font-medium " + (e.reliability >= 90 ? 'bg-emerald-500/20 text-emerald-400' : e.reliability >= 70 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400')}>{e.reliability}%</span></td>
+                    <td className="py-3 pr-4">${e.weeklyCost.toFixed(2)}</td>
+                    <td className="py-3 pr-4">{e.totalTasks}</td>
+                    <td className="py-3 pr-4 text-red-400">{e.failures}</td>
+                    <td className="py-3">{e.escalationRate}%</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )}
+          </div>
+        )}
+
+        {/* EVALS */}
+        {tab === 'evals' && (
+          <div>
+            <h2 className="text-lg font-semibold mb-4">Evaluation Dashboard</h2>
+            <p className="text-sm text-gray-500 mb-4">Golden test set results per agent. Score &lt; 70% triggers regression alert and blocks deployment.</p>
+            {evalHistory.length === 0 ? <div className="text-gray-500 bg-gray-900 rounded-lg p-6 text-center">No eval runs yet. Run: POST /observability/eval/:agentId</div> : (
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead><tr className="text-left text-gray-500 border-b border-gray-800"><th className="pb-2 pr-4">Agent</th><th className="pb-2 pr-4">Version</th><th className="pb-2 pr-4">Score</th><th className="pb-2 pr-4">Passed</th><th className="pb-2 pr-4">Failed</th><th className="pb-2 pr-4">Triggered By</th><th className="pb-2">Date</th></tr></thead>
+                <tbody>{evalHistory.map((e, i) => (
+                  <tr key={i} className={"border-b border-gray-800/50 " + (!e.passed ? 'bg-red-500/5' : '')}>
+                    <td className="py-3 pr-4 font-mono text-xs text-blue-400">{e.agentId}</td>
+                    <td className="py-3 pr-4 text-xs text-gray-500">{e.testSetVersion}</td>
+                    <td className="py-3 pr-4"><span className={"px-2 py-0.5 rounded text-xs font-bold " + (e.score != null && e.score >= 70 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400')}>{e.score != null ? e.score + '%' : 'N/A'}</span></td>
+                    <td className="py-3 pr-4 text-emerald-400">{e.passedTests}</td>
+                    <td className="py-3 pr-4 text-red-400">{e.failedTests}</td>
+                    <td className="py-3 pr-4 text-xs text-gray-500">{e.triggeredBy}</td>
+                    <td className="py-3 text-xs text-gray-500">{new Date(e.createdAt).toLocaleString()}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )}
           </div>
         )}
       </div>

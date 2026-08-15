@@ -19,6 +19,7 @@ import { MarketingLayerModule } from './layers/marketing/marketing-layer.module'
 import { OperationsLayerModule } from './layers/operations/operations-layer.module';
 import { FinanceLayerModule } from './layers/finance/finance-layer.module';
 import { AgentRuntimeModule } from './agent-runtime/agent-runtime.module';
+import { ObservabilityModule } from './observability/observability.module';
 
 @Module({
   imports: [

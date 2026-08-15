@@ -8,6 +8,7 @@ import { ToolRegistryService } from './tool-registry.service';
 import { ContextAssemblerService } from './context-assembler.service';
 import { RiskGateService } from './risk-gate.service';
 import { McpConnectorExecutor } from './mcp-connector-executor.service';
+import { SpanEmitterService } from '../observability/span-emitter.service';
 import { AgentTask, AgentConfig, ExecutionResult, StepType, ToolCall, ToolResult, MODEL_TIERS } from './types';
 
 @Injectable()
@@ -24,12 +25,14 @@ export class AgentRuntimeService {
     private contextAssembler: ContextAssemblerService,
     private riskGate: RiskGateService,
     private mcpExecutor: McpConnectorExecutor,
+    private spanEmitter: SpanEmitterService,
   ) {}
 
   async executeTask(task: AgentTask, config: AgentConfig): Promise<ExecutionResult> {
     const startTime = Date.now();
     const traceId = task.traceId || uuidv4();
     this.logger.log('Starting task ' + task.taskId + ' for agent ' + task.agentId + ' trace=' + traceId);
+    await this.spanEmitter.emit({ traceId, agentId: task.agentId, taskId: task.taskId, spanType: 'task', status: 'in_progress', inputSummary: task.goal.substring(0, 200) });
 
     try {
       await this.prisma.task.update({
@@ -73,18 +76,21 @@ export class AgentRuntimeService {
           continue;
         }
 
-        const toolCall = this.parseToolCall(response);
+        const stepSpanId = await this.spanEmitter.emit({ traceId, agentId: task.agentId, taskId: task.taskId, spanType: 'reasoning_step', status: 'success', inputSummary: 'LLM reasoning step ' + step, outputSummary: response.substring(0, 200) });
+    const toolCall = this.parseToolCall(response);
 
         if (!toolCall) {
           await this.recordStep(task.taskId, step, 'final_answer', response, null, null, null, undefined, Date.now() - stepStart);
-          await this.completeTask(task.taskId, response);
+          await this.spanEmitter.emit({ traceId, agentId: task.agentId, taskId: task.taskId, spanType: 'reasoning_step', status: 'success', outputSummary: response.substring(0, 200), parentSpanId: stepSpanId });
+    await this.completeTask(task.taskId, response);
           await this.activity.logActivity({ founderId: task.founderId, type: 'TASK_COMPLETED', description: 'Agent completed: ' + task.goal.substring(0, 100) });
           await this.events.publish({
             type: 'task.completed', publisher: task.agentId,
             payload: { taskId: task.taskId, result: response } as any,
             correlationId: traceId,
           });
-          return { taskId: task.taskId, status: 'completed', result: response, totalSteps: step + 1, totalDurationMs: Date.now() - startTime };
+          await this.spanEmitter.emit({ traceId, agentId: task.agentId, taskId: task.taskId, spanType: 'task', status: 'success', outputSummary: 'Task completed' });
+    return { taskId: task.taskId, status: 'completed', result: response, totalSteps: step + 1, totalDurationMs: Date.now() - startTime };
         }
 
         const tool = this.toolRegistry.getTool(toolCall.name);
@@ -101,11 +107,13 @@ export class AgentRuntimeService {
           this.logger.warn('Idempotency cache hit: ' + toolCall.idempotencyKey);
           await this.recordStep(task.taskId, step, 'tool_result', null, cached.output, toolCall, cached, undefined, 0);
           loopHistory.push({ role: 'assistant', content: response });
-          loopHistory.push({ role: 'user', content: 'Tool ' + toolCall.name + ': ' + JSON.stringify(cached.output) + ' (cached result)' });
+          await this.spanEmitter.complete(stepSpanId, 'Tool ' + toolCall.name + ' completed');
+    loopHistory.push({ role: 'user', content: 'Tool ' + toolCall.name + ': ' + JSON.stringify(cached.output) + ' (cached result)' });
           continue;
         }
 
-        const gate = await this.riskGate.check(tool, toolCall, task.taskId, task.agentId, task.founderId, task.layer);
+        await this.spanEmitter.emit({ traceId, agentId: task.agentId, taskId: task.taskId, spanType: 'tool_call', status: 'pending', inputSummary: 'Tool: ' + toolCall.name, parentSpanId: stepSpanId });
+    const gate = await this.riskGate.check(tool, toolCall, task.taskId, task.agentId, task.founderId, task.layer);
         await this.recordStep(task.taskId, step, 'tool_call', response, null, toolCall, null, undefined, Date.now() - stepStart);
 
         if (!gate.allowed) {

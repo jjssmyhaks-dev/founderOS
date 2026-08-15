@@ -12,6 +12,7 @@ import { TokenBudgetService } from './token-budget.service';
 import { HandoffService } from './handoff.service';
 import { CrashRecoveryService } from './crash-recovery.service';
 import { ScheduledTriggerService } from './scheduled-trigger.service';
+
 import { AgentRuntimeController } from './agent-runtime.controller';
 
 @Module({
@@ -27,7 +28,7 @@ import { AgentRuntimeController } from './agent-runtime.controller';
     CrashRecoveryService,
     ScheduledTriggerService,
   ],
-  exports: [AgentRuntimeService, ToolRegistryService, McpConnectorExecutor, ScheduledTriggerService],
+  exports: [AgentRuntimeService, ToolRegistryService, McpConnectorExecutor, ScheduledTriggerService, ],
   controllers: [AgentRuntimeController],
 })
 export class AgentRuntimeModule {}
