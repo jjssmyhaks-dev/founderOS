@@ -1,0 +1,9 @@
+*.py
+node_modules/
+dist/
+.next/
+.env
+*.db
+dump.rdb
+.prisma/
+!prisma/schema.prisma

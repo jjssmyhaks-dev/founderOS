@@ -1,0 +1,258 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  
+}
+
+
+
+model Founder {
+  id                  String   @id @default(uuid()) @db.Uuid
+  email               String   @unique
+  passwordHash        String
+  name                String
+  businessName        String?
+  businessDescription String?
+  timezone            String   @default("UTC")
+  autonomySettings    Json     @default("{\"research\":{\"defaultTier\":\"NOTIFY_AND_ACT\"},\"marketing\":{\"defaultTier\":\"NOTIFY_AND_ACT\"},\"operations\":{\"defaultTier\":\"NOTIFY_AND_ACT\"},\"finance\":{\"defaultTier\":\"APPROVAL_REQUIRED\"}}")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  agents          Agent[]
+  tasks           Task[]
+  approvals       Approval[]
+  connectors      Connector[]
+  contextNotes    ContextNote[]
+  activityLogs    ActivityLog[]
+  chatSessions    ChatSession[]
+  chatMessages    ChatMessage[]
+
+  @@index([email])
+}
+
+model Agent {
+  id            String @id @default(uuid()) @db.Uuid
+  name          String
+  layer         String
+  role          String
+  responsibility String
+  status        String @default("IDLE")
+  founderId     String @db.Uuid
+  metrics       Json   @default("{\"tasksCompleted\":0,\"tasksFailed\":0,\"avgResponseMs\":0}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  founder Founder @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@index([founderId])
+  @@index([status])
+}
+
+model Task {
+  id               String    @id @default(uuid()) @db.Uuid
+  founderId        String    @db.Uuid
+  layer            String
+  agentId          String?   @db.Uuid
+  title            String
+  description      String
+  status           String    @default("PENDING")
+  riskTier         String    @default("NOTIFY_AND_ACT")
+  priority         String    @default("MEDIUM")
+  parentTaskId     String?   @db.Uuid
+  metadata         Json?
+  result           String?
+  error            String?
+  // Harness fields
+  triggerType      String    @default("orchestrator_assigned")
+  goal             String?
+  contextRefs      String[]
+  riskTierHint     String?
+  deadline         DateTime?
+  traceId          String?   @db.Uuid
+  currentStep      Int       @default(0)
+  maxSteps         Int       @default(8)
+  modelOverride    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  startedAt        DateTime?
+  completedAt      DateTime?
+
+  founder  Founder    @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  agent    Agent?     @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  approvals Approval[]
+  steps    TaskStep[]
+
+  @@index([founderId])
+  @@index([status])
+  @@index([layer])
+  @@index([agentId])
+  @@index([traceId])
+}
+
+model Event {
+  id           String    @id @default(uuid()) @db.Uuid
+  type         String
+  publisher    String
+  payload      Json
+  timestamp    DateTime  @default(now())
+  correlationId String? @db.Uuid
+
+  @@index([type])
+  @@index([timestamp])
+  @@index([correlationId])
+}
+
+model EventSubscription {
+  id               String   @id @default(uuid()) @db.Uuid
+  subscriberAgentId String  @db.Uuid
+  eventTypes       String[]
+  createdAt         DateTime @default(now())
+
+  @@index([subscriberAgentId])
+}
+
+model Approval {
+  id           String    @id @default(uuid()) @db.Uuid
+  taskId       String    @db.Uuid
+  agentId      String    @db.Uuid
+  layer        String
+  action       String
+  reasoning    String
+  riskTier     String
+  riskFactors  String[]
+  status       String    @default("PENDING")
+  resolution   String?
+  editedAction String?
+  founderId    String    @db.Uuid
+  expiresAt    DateTime
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  founder Founder @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  task    Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([founderId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model Connector {
+  id                 String    @id @default(uuid()) @db.Uuid
+  founderId          String    @db.Uuid
+  connectorName      String
+  status             String    @default("DISCONNECTED")
+  lastHealthCheck    DateTime?
+  lastSuccessfulCall DateTime?
+  authMetadata       Json?
+  createdAt          DateTime  @default(now())
+
+  founder Founder @relation(fields: [founderId], references: [id], onDelete: Cascade)
+
+  @@unique([founderId, connectorName])
+  @@index([founderId])
+  @@index([status])
+}
+
+model ConnectorDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  displayName String
+  description String
+  icon        String   @default("🔌")
+  authType    String   @default("OAUTH")
+  layer       String   @default("CROSS_LAYER")
+  scopes      String[] @default([])
+  tools       String[] @default([])
+  createdAt   DateTime @default(now())
+}
+
+model ContextNote {
+  id            String   @id @default(uuid()) @db.Uuid
+  founderId     String   @db.Uuid
+  category      String
+  content       String
+  embeddingId   String?
+  embedding     Unsupported("vector(1536)")?
+  sourceAgentId String?  @db.Uuid
+  sourceTaskId  String?  @db.Uuid
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  founder Founder @relation(fields: [founderId], references: [id], onDelete: Cascade)
+
+  @@index([founderId])
+  @@index([category])
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  founderId   String   @db.Uuid
+  agentId     String?  @db.Uuid
+  type        String
+  description String
+  metadata    Json?
+  timestamp   DateTime @default(now())
+
+  founder Founder @relation(fields: [founderId], references: [id], onDelete: Cascade)
+
+  @@index([founderId])
+  @@index([timestamp])
+  @@index([type])
+}
+
+model ChatSession {
+  id        String   @id @default(uuid()) @db.Uuid
+  founderId String   @db.Uuid
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  founder Founder       @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([founderId])
+}
+
+model TaskStep {
+  id          String   @id @default(uuid()) @db.Uuid
+  taskId      String   @db.Uuid
+  stepNumber  Int
+  type        String
+  input       Json?
+  output      Json?
+  toolCall    Json?
+  toolResult  Json?
+  error       String?
+  durationMs  Int?
+  createdAt   DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, stepNumber])
+  @@index([taskId])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  founderId String   @db.Uuid
+  sessionId String   @db.Uuid
+  role      String
+  content   String
+  agentId   String?  @db.Uuid
+  layer     String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  founder Founder      @relation(fields: [founderId], references: [id], onDelete: Cascade)
+
+  @@index([founderId])
+  @@index([sessionId])
+}
+
+

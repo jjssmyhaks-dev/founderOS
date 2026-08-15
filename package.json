@@ -1,0 +1,29 @@
+{
+  "name": "helm-ai-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Helm — AI Operating System for Solo Founders",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm run start:dev -w @helm/backend",
+    "dev:frontend": "npm run dev -w @helm/frontend",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build:shared": "npm run build -w @helm/shared",
+    "build:backend": "npm run build -w @helm/backend",
+    "build:frontend": "npm run build -w @helm/frontend",
+    "build": "npm run build:shared && npm run build:backend",
+    "db:generate": "npm run prisma:generate -w @helm/backend",
+    "db:push": "npm run prisma:push -w @helm/backend",
+    "db:migrate": "npm run prisma:migrate -w @helm/backend",
+    "db:studio": "npm run prisma:studio -w @helm/backend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1"
+  }
+}
