@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Param, Query, Body } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { TraceService } from './trace.service';
 import { EvalService } from './eval.service';
 import { SpanEmitterService } from './span-emitter.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+@UseGuards(JwtAuthGuard)
 @Controller('observability')
 export class ObservabilityController {
   constructor(

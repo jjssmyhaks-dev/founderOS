@@ -21,6 +21,7 @@ import { FinanceLayerModule } from './layers/finance/finance-layer.module';
 import { AgentRuntimeModule } from './agent-runtime/agent-runtime.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { MemoryModule } from './memory/memory.module';
+import { GatewayModule } from './gateway/gateway.module';
 
 @Module({
   imports: [

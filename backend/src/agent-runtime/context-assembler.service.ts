@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TokenBudgetService } from './token-budget.service';
 import { MemoryService } from '../memory/memory.service';
+import { getAgentPrompt } from '../agents/agent-prompts';
 import { AgentTask, AgentConfig } from './types';
 
 @Injectable()
@@ -17,8 +18,10 @@ export class ContextAssemblerService {
     const parts: Array<{ content: string; priority: number }> = [];
 
     // Priority 0: system prompt (always included)
-    if (config.systemPrompt) {
-      parts.push({ content: config.systemPrompt, priority: 0 });
+    // Agent-specific or generic system prompt (priority 0, always included)
+    const agentPrompt = getAgentPrompt(task.agentId) || config.systemPrompt || 'You are a helpful business assistant.';
+    if (agentPrompt) {
+      parts.push({ content: agentPrompt, priority: 0 });
     }
 
     // Priority 1: task goal

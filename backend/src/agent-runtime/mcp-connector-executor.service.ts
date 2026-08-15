@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { getConnectorConfig } from '../connectors/connector-config';
 import { ToolCall, ToolResult } from './types';
 
 interface McpConnectorConfig {

@@ -16,11 +16,17 @@ export interface LlmClassificationResult {
   metadata?: Record<string, unknown>;
 }
 
+const MODEL_TIERS = {
+  FAST: 'claude-3-haiku-20240307',
+  DEFAULT: 'claude-sonnet-4-20250514',
+  POWERFUL: 'claude-opus-4-20250514',
+} as const;
+
 @Injectable()
 export class LlmService implements OnModuleInit {
   private readonly logger = new Logger(LlmService.name);
   private client: Anthropic | null = null;
-  private defaultModel = 'claude-2.1';
+  private defaultModel = MODEL_TIERS.DEFAULT;
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -28,27 +34,50 @@ export class LlmService implements OnModuleInit {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
     if (apiKey) {
       this.client = new Anthropic({ apiKey });
-      this.logger.log('Anthropic client initialized');
+      this.logger.log('Anthropic client initialized (messages API)');
     } else {
-      this.logger.warn('No ANTHROPIC_API_KEY configured');
+      this.logger.warn('No ANTHROPIC_API_KEY configured - LLM calls will fail');
     }
   }
 
   async complete(options: LlmCompleteOptions): Promise<string> {
-    if (!this.client) throw new Error('Anthropic client not initialized');
+    if (!this.client) throw new Error('Anthropic client not initialized. Set ANTHROPIC_API_KEY in .env');
     const model = options.model || this.defaultModel;
     const maxTokens = options.maxTokens || 2048;
-    const prompt = options.system
-      ? `${Anthropic.HUMAN_PROMPT} ${options.system}\n\n${options.prompt}${Anthropic.AI_PROMPT}`
-      : `${Anthropic.HUMAN_PROMPT} ${options.prompt}${Anthropic.AI_PROMPT}`;
     try {
-      const response: any = await this.retry(
-        () => this.client!.completions.create({ model, max_tokens_to_sample: maxTokens, prompt } as any),
+      const response: any = await this.retry(() =>
+        (this.client as any).messages.create({
+          model,
+          max_tokens: maxTokens,
+          system: options.system || undefined,
+          messages: [{ role: 'user', content: options.prompt }],
+        }),
         3,
       );
-      return response.completion || '';
+      const textBlock = response.content?.find((b: any) => b.type === 'text');
+      return textBlock ? (textBlock as any).text : '';
     } catch (err) {
       this.logger.error('LLM failed: ' + (err instanceof Error ? err.message : String(err)));
+      throw err;
+    }
+  }
+
+  async chat(messages: Array<{ role: string; content: string }>, system?: string, model?: string, maxTokens?: number): Promise<string> {
+    if (!this.client) throw new Error('Anthropic client not initialized. Set ANTHROPIC_API_KEY in .env');
+    try {
+      const response: any = await this.retry(() =>
+        (this.client as any).messages.create({
+          model: model || this.defaultModel,
+          max_tokens: maxTokens || 4096,
+          system: system || undefined,
+          messages: messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        }),
+        3,
+      );
+      const textBlock = response.content?.find((b: any) => b.type === 'text');
+      return textBlock ? (textBlock as any).text : '';
+    } catch (err) {
+      this.logger.error('LLM chat failed: ' + (err instanceof Error ? err.message : String(err)));
       throw err;
     }
   }
@@ -61,9 +90,15 @@ export class LlmService implements OnModuleInit {
   }
 
   async generateEmbedding(text: string): Promise<string> {
+    // TODO: Replace with real embedding API (OpenAI embeddings, Voyage AI, etc.)
+    // For now, return a UUID stub — pgvector search will use LLM-based ranking fallback
     const id = uuidv4();
-    this.logger.log('Generated embedding id ' + id + ' for text (' + text.length + ' chars)');
+    this.logger.verbose('Generated embedding stub ' + id + ' for text (' + text.length + ' chars)');
     return id;
+  }
+
+  getModelTier(tier: string): string {
+    return (MODEL_TIERS as any)[tier] || this.defaultModel;
   }
 
   private async retry<T>(fn: () => Promise<T>, maxRetries: number): Promise<T> {
@@ -75,7 +110,7 @@ export class LlmService implements OnModuleInit {
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         if (i === maxRetries) break;
-        if (lastError.message.includes('rate_limit')) continue;
+        if (lastError.message.includes('rate_limit') || lastError.message.includes('overloaded')) continue;
         throw lastError;
       }
     }
