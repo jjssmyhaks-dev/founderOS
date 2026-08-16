@@ -2,7 +2,7 @@
 
 import { useApprovalStore, type Approval } from '@/stores/approvals.store';
 import { AGENTS, getLayerConfig } from '@/config/agents';
-import { CheckCircle, XCircle, Edit3, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, Edit3, Clock, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -15,9 +15,14 @@ export default function ApprovalQueue() {
 
   if (approvals.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-        <CheckCircle className="w-8 h-8 text-[var(--text-muted)] mb-2" />
-        <p className="text-xs text-[var(--text-muted)]">No pending approvals</p>
+      <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+        <div className="w-12 h-12 rounded-xl bg-[var(--bg-tertiary)] flex items-center justify-center mb-3">
+          <ShieldCheck className="w-6 h-6 text-[var(--text-muted)]" />
+        </div>
+        <p className="text-sm font-medium text-[var(--text-secondary)] mb-1">All clear</p>
+        <p className="text-xs text-[var(--text-muted)] leading-relaxed max-w-[220px]">
+          When Helm&apos;s agents need your approval for high-risk actions (like spending money or sending public messages), they&apos;ll appear here.
+        </p>
       </div>
     );
   }

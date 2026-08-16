@@ -3,7 +3,7 @@
 import { useConnectorStore } from '@/stores/connectors.store';
 import { CONNECTOR_DEFS } from '@/config/connectors';
 import { LAYERS } from '@/config/agents';
-import { Wifi, WifiOff, Loader2, Link2Off } from 'lucide-react';
+import { Wifi, WifiOff, Loader2, Link2Off, Plug } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const STATUS_STYLES: Record<string, { dot: string; label: string }> = {
@@ -21,14 +21,18 @@ export default function ConnectorPanel() {
 
   if (connectors.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-        <Link2Off className="w-8 h-8 text-[var(--text-muted)] mb-2" />
-        <p className="text-xs text-[var(--text-muted)]">No connectors configured</p>
+      <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+        <div className="w-12 h-12 rounded-xl bg-[var(--bg-tertiary)] flex items-center justify-center mb-3">
+          <Plug className="w-6 h-6 text-[var(--text-muted)]" />
+        </div>
+        <p className="text-sm font-medium text-[var(--text-secondary)] mb-1">No connectors yet</p>
+        <p className="text-xs text-[var(--text-muted)] leading-relaxed max-w-[220px]">
+          Connect your tools as Helm suggests them during conversation — Slack, WhatsApp, Razorpay, Google Ads, and more. No need to set up everything upfront.
+        </p>
       </div>
     );
   }
 
-  // Group by layer
   const grouped: Record<string, typeof connectors> = {};
   for (const c of connectors) {
     const key = c.layer || 'CROSS_LAYER';

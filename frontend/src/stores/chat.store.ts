@@ -8,6 +8,7 @@ export interface ChatMsg {
   agentId?: string;
   layer?: string;
   createdAt: string;
+  metadata?: { onboarding?: boolean; isOnboarding?: boolean };
 }
 
 interface ChatState {
@@ -15,11 +16,13 @@ interface ChatState {
   currentSessionId: string | null;
   isLoading: boolean;
   isRecording: boolean;
+  isOnboarding: boolean;
   sendMessage: (content: string) => Promise<void>;
   addMessage: (msg: ChatMsg) => void;
   setSession: (id: string) => void;
   setLoading: (v: boolean) => void;
   setRecording: (v: boolean) => void;
+  setOnboarding: (v: boolean) => void;
   loadHistory: () => Promise<void>;
 }
 
@@ -28,6 +31,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   currentSessionId: null,
   isLoading: false,
   isRecording: false,
+  isOnboarding: false,
+
   sendMessage: async (content: string) => {
     const token = localStorage.getItem('helm_token');
     if (!token) return;
@@ -41,14 +46,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json();
-      const agentMsg: ChatMsg = { id: data.response?.id || `resp-${Date.now()}`, sessionId: data.sessionId || get().currentSessionId || '', role: 'AGENT', content: data.response?.content || 'No response', agentId: data.response?.agentId, layer: data.response?.layer, createdAt: new Date().toISOString() };
-      set(s => ({ messages: [...s.messages.filter(m => m.id !== optimistic.id), { ...optimistic, id: data.message?.id || optimistic.id }, agentMsg], currentSessionId: data.sessionId || s.currentSessionId, isLoading: false }));
+      const agentMsg: ChatMsg = { id: data.response?.id || `resp-${Date.now()}`, sessionId: data.sessionId || get().currentSessionId || '', role: 'AGENT', content: data.response?.content || 'No response', agentId: data.response?.agentId, layer: data.response?.layer, createdAt: new Date().toISOString(), metadata: data.response?.metadata };
+      const updatedOnboarding = data.isOnboarding !== undefined ? !data.isOnboarding : get().isOnboarding;
+      set(s => ({
+        messages: [
+          ...s.messages.filter(m => m.id !== optimistic.id),
+          { ...optimistic, id: data.message?.id || optimistic.id },
+          agentMsg,
+        ],
+        currentSessionId: data.sessionId || s.currentSessionId,
+        isLoading: false,
+        isOnboarding: updatedOnboarding,
+      }));
     } catch { set({ isLoading: false }); }
   },
   addMessage: (msg) => set(s => ({ messages: [...s.messages, msg] })),
   setSession: (id) => set({ currentSessionId: id, messages: [] }),
   setLoading: (v) => set({ isLoading: v }),
   setRecording: (v) => set({ isRecording: v }),
+  setOnboarding: (v) => set({ isOnboarding: v }),
   loadHistory: async () => {
     const token = localStorage.getItem('helm_token');
     if (!token) return;

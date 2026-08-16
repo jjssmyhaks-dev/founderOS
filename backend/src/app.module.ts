@@ -23,6 +23,7 @@ import { ObservabilityModule } from './observability/observability.module';
 import { MemoryModule } from './memory/memory.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { SupabaseModule } from './supabase/supabase.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 
 @Module({
   imports: [
@@ -43,8 +44,12 @@ import { SupabaseModule } from './supabase/supabase.module';
     MarketingLayerModule,
     OperationsLayerModule,
     FinanceLayerModule,
+    AgentRuntimeModule,
+    ObservabilityModule,
+    MemoryModule,
+    GatewayModule,
+    SupabaseModule,
+    OnboardingModule,
   ],
 })
 export class AppModule {}
-
-

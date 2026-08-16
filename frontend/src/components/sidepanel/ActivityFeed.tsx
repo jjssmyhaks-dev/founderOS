@@ -2,16 +2,25 @@
 
 import { useActivityStore } from '@/stores/activity.store';
 import { AGENTS, getLayerConfig } from '@/config/agents';
-import { Activity } from 'lucide-react';
+import { Activity, Sparkles } from 'lucide-react';
 
 export default function ActivityFeed() {
   const activities = useActivityStore((s) => s.activities);
 
   if (activities.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
-        <Activity className="w-8 h-8 text-[var(--text-muted)] mb-2" />
-        <p className="text-xs text-[var(--text-muted)]">All agents idle</p>
+      <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+        <div className="w-12 h-12 rounded-xl bg-[var(--bg-tertiary)] flex items-center justify-center mb-3">
+          <Activity className="w-6 h-6 text-[var(--text-muted)]" />
+        </div>
+        <p className="text-sm font-medium text-[var(--text-secondary)] mb-1">No activity yet</p>
+        <p className="text-xs text-[var(--text-muted)] leading-relaxed max-w-[200px]">
+          Send your first message in the chat and Helm&apos;s agents will start working. You&apos;ll see their progress here.
+        </p>
+        <div className="mt-4 flex items-center gap-1.5 text-[10px] text-[var(--text-muted)]">
+          <Sparkles className="w-3 h-3" />
+          <span>21 agents ready</span>
+        </div>
       </div>
     );
   }

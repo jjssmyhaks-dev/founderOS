@@ -1,14 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { AgentService } from '../agents/agents.service';
+import { OnboardingService } from '../onboarding/onboarding.service';
 import { SignupDto, LoginDto } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
+    private agentService: AgentService,
+    private onboarding: OnboardingService,
   ) {}
 
   async signup(dto: SignupDto) {
@@ -20,8 +26,9 @@ export class AuthService {
       data: {
         email: dto.email,
         name: dto.name,
+        businessName: dto.businessName || null,
         passwordHash: hash,
-        timezone: 'Asia/Calcutta',
+        timezone: dto.timezone || 'UTC',
         autonomySettings: {
           research: { defaultTier: 'NOTIFY_AND_ACT' },
           marketing: { defaultTier: 'NOTIFY_AND_ACT' },
@@ -31,8 +38,18 @@ export class AuthService {
       },
     });
 
-    const token = this.jwt.sign({ sub: founder.id, email: founder.email });
-    return { access_token: token, founder: this.sanitize(founder) };
+    const token = this.jwt.sign({
+      sub: founder.id,
+      email: founder.email,
+      businessName: founder.businessName,
+    });
+
+    // Seed 21 agents for this founder in background
+    this.agentService.seedAgents(founder.id).catch((e) =>
+      this.logger.error('Agent seed failed: ' + String(e)),
+    );
+
+    return { access_token: token, founder: this.sanitize(founder), needsOnboarding: true };
   }
 
   async login(dto: LoginDto) {
@@ -43,7 +60,11 @@ export class AuthService {
     if (!valid) throw new Error('Invalid credentials');
 
     const token = this.jwt.sign({ sub: founder.id, email: founder.email });
-    return { access_token: token, founder: this.sanitize(founder) };
+
+    // Check if onboarding is complete
+    const onboardingDone = await this.onboarding.isOnboardingComplete(founder.id);
+
+    return { access_token: token, founder: this.sanitize(founder), needsOnboarding: !onboardingDone };
   }
 
   async getProfile(founderId: string) {

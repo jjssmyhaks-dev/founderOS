@@ -1,15 +1,21 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrchestrationService } from '../orchestration/orchestration.service';
 import { ActivityService } from '../activity/activity.service';
+import { OnboardingService } from '../onboarding/onboarding.service';
+import { ContextCompletenessService } from '../onboarding/context-completeness.service';
 import { v4 as uuid } from 'uuid';
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(
     private prisma: PrismaService,
     private orchestrator: OrchestrationService,
     private activity: ActivityService,
+    private onboarding: OnboardingService,
+    private completeness: ContextCompletenessService,
   ) {}
 
   async handleMessage(founderId: string, content: string, sessionId?: string) {
@@ -37,10 +43,48 @@ export class ChatService {
       },
     });
 
-    // Route through orchestrator
+    // Check if founder is still in onboarding mode
+    const isOnboardingComplete = await this.onboarding.isOnboardingComplete(founderId);
+
+    if (!isOnboardingComplete) {
+      const result = await this.onboarding.handleOnboardingMessage(founderId, content);
+
+      await this.prisma.chatMessage.create({
+        data: {
+          founderId,
+          sessionId: session.id,
+          role: 'AGENT',
+          content: result.response,
+          agentId: 'global-orchestrator',
+          layer: 'GLOBAL',
+          metadata: { onboarding: true, isOnboarding: result.isOnboarding },
+        },
+      });
+
+      if (!result.isOnboarding) {
+        await this.onboarding.markOnboardingComplete(founderId);
+      }
+
+      return {
+        sessionId: session.id,
+        message: { id: uuid(), role: 'FOUNDER', content, sessionId: session.id },
+        response: {
+          id: uuid(),
+          role: 'AGENT',
+          content: result.response,
+          agentId: 'global-orchestrator',
+          layer: 'GLOBAL',
+          sessionId: session.id,
+          createdAt: new Date().toISOString(),
+          metadata: { onboarding: true, isOnboarding: result.isOnboarding },
+        },
+        isOnboarding: result.isOnboarding,
+      };
+    }
+
+    // Normal routing through orchestrator
     const response = await this.orchestrator.routeMessage(founderId, content);
 
-    // Store agent response
     await this.prisma.chatMessage.create({
       data: {
         founderId,
@@ -77,8 +121,6 @@ export class ChatService {
   }
 
   async handleVoice(founderId: string, audioDataBase64: string, format?: string) {
-    // In production: send to STT provider (Deepgram/ElevenLabs/OpenAI)
-    // For now, return a placeholder that voice is received
     const transcript = '[Voice input received. STT provider integration required.]';
     return this.handleMessage(founderId, transcript);
   }
@@ -102,5 +144,9 @@ export class ChatService {
       orderBy: { updatedAt: 'desc' },
       take: 20,
     });
+  }
+
+  async getContextCompleteness(founderId: string) {
+    return this.completeness.getCompleteness(founderId);
   }
 }

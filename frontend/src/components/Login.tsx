@@ -3,12 +3,21 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
 import toast from 'react-hot-toast';
+import { Building2, Globe } from 'lucide-react';
+
+const TIMEZONES = [
+  'UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+  'Europe/London', 'Europe/Berlin', 'Europe/Paris', 'Asia/Dubai',
+  'Asia/Kolkata', 'Asia/Singapore', 'Asia/Hong_Kong', 'Asia/Tokyo', 'Australia/Sydney',
+];
 
 export default function Login() {
   const [isSignup, setIsSignup] = useState(false);
   const [name, setName] = useState('');
+  const [businessName, setBusinessName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
   const { login, signup, isLoading } = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -16,7 +25,7 @@ export default function Login() {
     try {
       if (isSignup) {
         if (!name.trim()) { toast.error('Name is required'); return; }
-        await signup(name, email, password);
+        await signup(name, email, password, businessName || undefined, timezone);
         toast.success('Account created!');
       } else {
         await login(email, password);
@@ -41,13 +50,29 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {isSignup && (
             <div>
-              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">Name</label>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">Your name</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-colors text-sm"
-                placeholder="Your name"
+                placeholder="Jane Doe"
+              />
+            </div>
+          )}
+          {isSignup && (
+            <div>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                <Building2 className="w-3.5 h-3.5" />
+                Business name
+                <span className="text-[var(--text-muted)] font-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-colors text-sm"
+                placeholder="Acme Inc"
               />
             </div>
           )}
@@ -74,6 +99,23 @@ export default function Login() {
               placeholder="Min 6 characters"
             />
           </div>
+          {isSignup && (
+            <div>
+              <label className="flex items-center gap-1.5 text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                <Globe className="w-3.5 h-3.5" />
+                Timezone
+              </label>
+              <select
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-colors text-sm"
+              >
+                {TIMEZONES.map(tz => (
+                  <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <button
             type="submit"
             disabled={isLoading}

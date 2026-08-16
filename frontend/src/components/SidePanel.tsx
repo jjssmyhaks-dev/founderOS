@@ -1,13 +1,28 @@
 "use client";
 
+import { useState, useEffect } from 'react';
 import ActivityFeed from './sidepanel/ActivityFeed';
 import ApprovalQueue from './sidepanel/ApprovalQueue';
 import ConnectorPanel from './sidepanel/ConnectorPanel';
+import ContextCompletenessBar from './sidepanel/ContextCompletenessBar';
 import { X } from 'lucide-react';
 
 interface Props { onClose: () => void; }
 
 export default function SidePanel({ onClose }: Props) {
+  const [completeness, setCompleteness] = useState<any>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('helm_token');
+    if (!token) return;
+    fetch('http://localhost:4000/api/onboarding/completeness', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(setCompleteness)
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="w-80 border-l border-[var(--border)] bg-[var(--bg-panel)] flex flex-col shrink-0 animate-slideIn">
       {/* Mobile close button */}
@@ -15,6 +30,11 @@ export default function SidePanel({ onClose }: Props) {
         <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]">
           <X className="w-4 h-4" />
         </button>
+      </div>
+
+      {/* Context Completeness */}
+      <div className="p-2 border-b border-[var(--border)]">
+        <ContextCompletenessBar data={completeness} />
       </div>
 
       {/* Activity Feed */}
