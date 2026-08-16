@@ -1,9 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
+import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { AgentService } from '../agents/agents.service';
 import { OnboardingService } from '../onboarding/onboarding.service';
+import { AuthSecurityService } from '../common/services/auth-security.service';
 import { SignupDto, LoginDto } from './dto/auth.dto';
 
 @Injectable()
@@ -15,6 +17,7 @@ export class AuthService {
     private jwt: JwtService,
     private agentService: AgentService,
     private onboarding: OnboardingService,
+    private security: AuthSecurityService,
   ) {}
 
   async signup(dto: SignupDto) {
@@ -44,7 +47,6 @@ export class AuthService {
       businessName: founder.businessName,
     });
 
-    // Seed 21 agents for this founder in background
     this.agentService.seedAgents(founder.id).catch((e) =>
       this.logger.error('Agent seed failed: ' + String(e)),
     );
@@ -52,16 +54,27 @@ export class AuthService {
     return { access_token: token, founder: this.sanitize(founder), needsOnboarding: true };
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, req?: Request) {
     const founder = await this.prisma.founder.findUnique({ where: { email: dto.email } });
-    if (!founder || !founder.passwordHash) throw new Error('Invalid credentials');
+    if (!founder || !founder.passwordHash) {
+      const ip = (req as any)?.ip || (req as any)?.connection?.remoteAddress;
+      const ua = (req as any)?.headers?.['user-agent'];
+      await this.security.logFailedLogin(dto.email, ip, ua);
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
     const valid = await bcrypt.compare(dto.password, founder.passwordHash);
-    if (!valid) throw new Error('Invalid credentials');
+    if (!valid) {
+      const ip = (req as any)?.ip || (req as any)?.connection?.remoteAddress;
+      const ua = (req as any)?.headers?.['user-agent'];
+      const { isPotentialBruteForce } = await this.security.logFailedLogin(dto.email, ip, ua);
+      if (isPotentialBruteForce) {
+        throw new UnauthorizedException('Too many failed attempts. Try again later.');
+      }
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
     const token = this.jwt.sign({ sub: founder.id, email: founder.email });
-
-    // Check if onboarding is complete
     const onboardingDone = await this.onboarding.isOnboardingComplete(founder.id);
 
     return { access_token: token, founder: this.sanitize(founder), needsOnboarding: !onboardingDone };

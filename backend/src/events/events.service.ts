@@ -10,6 +10,7 @@ export interface PublishEventDto {
   publisher: string;
   payload: Record<string, unknown>;
   correlationId?: string;
+  founderId?: string;
 }
 
 @Injectable()
@@ -39,15 +40,26 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
   }
 
   async publish(dto: PublishEventDto) {
+    // Per Auth & Multi-Tenancy spec Section 4.3: every event carries founder_id
+    if (!dto.founderId) {
+      this.logger.warn(`Event ${dto.type} published without founderId by ${dto.publisher}`);
+    }
+
     const eventId = uuidv4();
     const timestamp = new Date();
+
+    // Inject founderId into payload for downstream subscribers
+    const enrichedPayload = { ...dto.payload };
+    if (dto.founderId) {
+      enrichedPayload.founderId = dto.founderId;
+    }
 
     await this.prisma.event.create({
       data: {
         id: eventId,
         type: dto.type,
         publisher: dto.publisher,
-        payload: dto.payload as any,
+        payload: enrichedPayload as any,
         timestamp,
         correlationId: dto.correlationId || undefined,
       },
@@ -57,18 +69,17 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
       id: eventId,
       type: dto.type,
       publisher: dto.publisher,
-      payload: dto.payload as any,
+      payload: enrichedPayload,
       timestamp: timestamp.toISOString(),
       correlationId: dto.correlationId,
+      founderId: dto.founderId,
     });
 
     await this.publisher.publish(`helm:events:${dto.type}`, channelMessage);
     await this.publisher.publish('helm:events:all', channelMessage);
 
     const subscriptions = await this.prisma.eventSubscription.findMany({
-      where: {
-        eventTypes: { has: dto.type },
-      },
+      where: { eventTypes: { has: dto.type } },
     });
 
     for (const sub of subscriptions) {
@@ -107,10 +118,6 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
 
   async getSubscriptions(agentId?: string) {
     const where = agentId ? { subscriberAgentId: agentId } : {};
-    return this.prisma.eventSubscription.findMany({
-      where,
-    });
+    return this.prisma.eventSubscription.findMany({ where });
   }
 }
-
-

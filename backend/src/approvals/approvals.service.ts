@@ -1,10 +1,12 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { MemoryService } from '../memory/memory.service';
 import { EventService } from '../events/events.service';
 import { TaskService } from '../tasks/tasks.service';
 import { ActivityService } from '../activity/activity.service';
+import { AuthSecurityService } from '../common/services/auth-security.service';
+import { Request } from 'express';
 
 @Injectable()
 export class ApprovalService {
@@ -16,6 +18,7 @@ export class ApprovalService {
     private readonly taskService: TaskService,
     private readonly activityService: ActivityService,
     private readonly config: ConfigService,
+    private readonly security: AuthSecurityService,
   ) {}
 
   async createApproval(data: {
@@ -54,7 +57,7 @@ export class ApprovalService {
     await this.eventService.publish({
       type: 'approval.requested',
       publisher: data.agentId,
-      payload: { approvalId: approval.id, taskId: data.taskId, action: data.action },
+      payload: { approvalId: approval.id, taskId: data.taskId, action: data.action, founderId: data.founderId },
     });
 
     await this.activityService.logActivity({
@@ -67,23 +70,27 @@ export class ApprovalService {
     return approval;
   }
 
-  async getPendingQueue(founderId: string) {
-    return this.prisma.approval.findMany({
-      where: {
-        founderId,
-        status: 'PENDING',
-        expiresAt: { gte: new Date() },
-      },
-      orderBy: { createdAt: 'asc' },
-      include: { task: true },
-    });
+  private async verifyOwnership(id: string, founderId: string, req?: Request) {
+    const approval = await this.prisma.approval.findUnique({ where: { id } });
+
+    if (!approval) throw new NotFoundException('Approval not found');
+
+    // Explicit founder_id mismatch check per Auth & Multi-Tenancy spec Section 4.4
+    if (approval.founderId !== founderId) {
+      const ip = (req as any)?.ip || (req as any)?.connection?.remoteAddress;
+      await this.security.logApprovalMismatch(id, approval.founderId, founderId, ip);
+      throw new ForbiddenException('Authorization failure: approval does not belong to this founder');
+    }
+
+    if (approval.status !== 'PENDING') {
+      throw new BadRequestException('Approval already resolved');
+    }
+
+    return approval;
   }
 
-  async approve(id: string, founderId: string) {
-    const approval = await this.prisma.approval.findFirst({
-      where: { id, founderId, status: 'PENDING' },
-    });
-    if (!approval) throw new NotFoundException('Approval not found or already resolved');
+  async approve(id: string, founderId: string, req?: Request) {
+    const approval = await this.verifyOwnership(id, founderId, req);
 
     await this.prisma.approval.update({
       where: { id },
@@ -95,11 +102,7 @@ export class ApprovalService {
     await this.eventService.publish({
       type: 'approval.resolved',
       publisher: 'founder',
-      payload: {
-        approvalId: id,
-        taskId: approval.taskId,
-        status: 'APPROVED',
-      },
+      payload: { approvalId: id, taskId: approval.taskId, status: 'APPROVED', founderId },
       correlationId: approval.taskId,
     });
 
@@ -112,19 +115,12 @@ export class ApprovalService {
     return this.prisma.approval.findUnique({ where: { id }, include: { task: true } });
   }
 
-  async reject(id: string, founderId: string, reason?: string) {
-    const approval = await this.prisma.approval.findFirst({
-      where: { id, founderId, status: 'PENDING' },
-    });
-    if (!approval) throw new NotFoundException('Approval not found or already resolved');
+  async reject(id: string, founderId: string, reason?: string, req?: Request) {
+    const approval = await this.verifyOwnership(id, founderId, req);
 
     await this.prisma.approval.update({
       where: { id },
-      data: {
-        status: 'REJECTED',
-        resolvedAt: new Date(),
-        resolution: reason || 'Rejected by founder',
-      },
+      data: { status: 'REJECTED', resolvedAt: new Date(), resolution: reason || 'Rejected by founder' },
     });
 
     await this.taskService.failTask(approval.taskId, `Rejected by founder: ${reason || 'No reason given'}`);
@@ -132,12 +128,7 @@ export class ApprovalService {
     await this.eventService.publish({
       type: 'approval.resolved',
       publisher: 'founder',
-      payload: {
-        approvalId: id,
-        taskId: approval.taskId,
-        status: 'REJECTED',
-        reason,
-      },
+      payload: { approvalId: id, taskId: approval.taskId, status: 'REJECTED', reason, founderId },
       correlationId: approval.taskId,
     });
 
@@ -150,24 +141,13 @@ export class ApprovalService {
     return this.prisma.approval.findUnique({ where: { id }, include: { task: true } });
   }
 
-  async edit(id: string, founderId: string, editedAction: string) {
-    if (!editedAction) {
-      throw new BadRequestException('editedAction is required');
-    }
-
-    const approval = await this.prisma.approval.findFirst({
-      where: { id, founderId, status: 'PENDING' },
-    });
-    if (!approval) throw new NotFoundException('Approval not found or already resolved');
+  async edit(id: string, founderId: string, editedAction: string, req?: Request) {
+    if (!editedAction) throw new BadRequestException('editedAction is required');
+    const approval = await this.verifyOwnership(id, founderId, req);
 
     await this.prisma.approval.update({
       where: { id },
-      data: {
-        status: 'EDITED',
-        editedAction,
-        resolvedAt: new Date(),
-        resolution: `Founder edited action: ${editedAction}`,
-      },
+      data: { status: 'EDITED', editedAction, resolvedAt: new Date(), resolution: `Founder edited action: ${editedAction}` },
     });
 
     await this.taskService.resumeTask(approval.taskId);
@@ -175,12 +155,7 @@ export class ApprovalService {
     await this.eventService.publish({
       type: 'approval.resolved',
       publisher: 'founder',
-      payload: {
-        approvalId: id,
-        taskId: approval.taskId,
-        status: 'EDITED',
-        editedAction,
-      },
+      payload: { approvalId: id, taskId: approval.taskId, status: 'EDITED', editedAction, founderId },
       correlationId: approval.taskId,
     });
 
@@ -193,12 +168,17 @@ export class ApprovalService {
     return this.prisma.approval.findUnique({ where: { id }, include: { task: true } });
   }
 
+  async getPendingQueue(founderId: string) {
+    return this.prisma.approval.findMany({
+      where: { founderId, status: 'PENDING', expiresAt: { gte: new Date() } },
+      orderBy: { createdAt: 'asc' },
+      include: { task: true },
+    });
+  }
+
   async expireStaleApprovals() {
     const stale = await this.prisma.approval.findMany({
-      where: {
-        status: 'PENDING',
-        expiresAt: { lt: new Date() },
-      },
+      where: { status: 'PENDING', expiresAt: { lt: new Date() } },
     });
 
     for (const approval of stale) {
@@ -206,9 +186,7 @@ export class ApprovalService {
         where: { id: approval.id },
         data: { status: 'EXPIRED', resolvedAt: new Date(), resolution: 'Approval expired' },
       });
-
       await this.taskService.failTask(approval.taskId, `Approval expired for action: ${approval.action}`);
-
       this.logger.log(`Expired approval ${approval.id} for task ${approval.taskId}`);
     }
 
