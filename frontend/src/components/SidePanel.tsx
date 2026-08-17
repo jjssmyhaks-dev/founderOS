@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { apiFetch } from '@/lib/api';
 import ActivityFeed from './sidepanel/ActivityFeed';
 import ApprovalQueue from './sidepanel/ApprovalQueue';
 import ConnectorPanel from './sidepanel/ConnectorPanel';
@@ -13,11 +14,7 @@ export default function SidePanel({ onClose }: Props) {
   const [completeness, setCompleteness] = useState<any>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('helm_token');
-    if (!token) return;
-    fetch('http://localhost:4000/api/onboarding/completeness', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    apiFetch('/onboarding/completeness')
       .then(r => r.ok ? r.json() : null)
       .then(setCompleteness)
       .catch(() => {});

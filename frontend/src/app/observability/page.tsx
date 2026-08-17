@@ -1,7 +1,12 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { apiHeaders } from '@/lib/api';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+const obsFetch = (path: string, opts?: RequestInit) => {
+  return fetch(API + path, { ...opts, headers: { ...apiHeaders(), ...opts?.headers } });
+};
 
 interface Span {
   id: string; spanType: string; status: string;
@@ -34,12 +39,12 @@ export default function ObservabilityPage() {
   const [explanation, setExplanation] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(API + '/activity?limit=30').then(r => r.json()).then(d => setActivities(d.items || d || [])).catch(() => {});
+    obsFetch('/activity?limit=30').then(r => r.json()).then(d => setActivities(d.items || d || [])).catch(() => {});
   }, []);
 
   const loadTrace = async (traceId: string) => {
     setSelectedTraceId(traceId);
-    const r = await fetch(API + '/observability/traces/' + traceId);
+    const r = await obsFetch('/observability/traces/' + traceId);
     setTrace(await r.json());
     setExplanation(null);
   };

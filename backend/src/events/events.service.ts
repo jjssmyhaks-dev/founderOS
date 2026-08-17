@@ -97,19 +97,23 @@ export class EventService implements OnModuleInit, OnModuleDestroy {
   }
 
   async subscribe(agentId: string, eventTypes: string[]) {
-    const existing = await this.prisma.eventSubscription.findFirst({
-      where: { subscriberAgentId: agentId },
-    });
+    try {
+      const existing = await this.prisma.eventSubscription.findFirst({
+        where: { subscriberAgentId: agentId },
+      });
 
-    if (existing) {
-      await this.prisma.eventSubscription.update({
-        where: { id: existing.id },
-        data: { eventTypes },
-      });
-    } else {
-      await this.prisma.eventSubscription.create({
-        data: { subscriberAgentId: agentId, eventTypes },
-      });
+      if (existing) {
+        await this.prisma.eventSubscription.update({
+          where: { id: existing.id },
+          data: { eventTypes },
+        });
+      } else {
+        await this.prisma.eventSubscription.create({
+          data: { subscriberAgentId: agentId, eventTypes },
+        });
+      }
+    } catch (err) {
+      this.logger.warn(`Event subscription failed for ${agentId}: ${err.message}`);
     }
 
     this.logger.log(`Agent ${agentId} subscribed to: ${eventTypes.join(', ')}`);

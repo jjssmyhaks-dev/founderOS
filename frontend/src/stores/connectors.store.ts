@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiFetch } from '@/lib/api';
 
 export interface Connector {
   id: string;
@@ -23,26 +24,22 @@ export const useConnectorStore = create<ConnectorState>((set) => ({
   connectors: [],
   connectingId: null,
   fetchConnectors: async () => {
-    const token = localStorage.getItem('helm_token');
-    if (!token) return;
     try {
-      const res = await fetch('http://localhost:4000/api/connectors', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await apiFetch('/connectors');
       if (res.ok) set({ connectors: await res.json() });
     } catch { /* silent */ }
   },
   connect: async (name) => {
-    const token = localStorage.getItem('helm_token');
-    if (!token) return;
     set({ connectingId: name });
     try {
-      await fetch(`http://localhost:4000/api/connectors/${name}/connect`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      await apiFetch(`/connectors/${name}/connect`, { method: 'POST' });
       set(s => ({ connectors: s.connectors.map(c => c.connectorName === name ? { ...c, status: 'CONNECTED' as const } : c), connectingId: null }));
     } catch { set({ connectingId: null }); }
   },
   disconnect: async (name) => {
-    const token = localStorage.getItem('helm_token');
-    if (!token) return;
-    await fetch(`http://localhost:4000/api/connectors/${name}/disconnect`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-    set(s => ({ connectors: s.connectors.map(c => c.connectorName === name ? { ...c, status: 'DISCONNECTED' as const } : c) }));
+    try {
+      await apiFetch(`/connectors/${name}/disconnect`, { method: 'DELETE' });
+      set(s => ({ connectors: s.connectors.map(c => c.connectorName === name ? { ...c, status: 'DISCONNECTED' as const } : c) }));
+    } catch { /* silent */ }
   },
 }));

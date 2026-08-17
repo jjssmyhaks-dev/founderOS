@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiFetch } from '@/lib/api';
 
 export interface Activity {
   id: string;
@@ -24,12 +25,8 @@ export const useActivityStore = create<ActivityState>((set) => ({
   activities: [],
   isPolling: false,
   fetchActivities: async () => {
-    const token = localStorage.getItem('helm_token');
-    if (!token) return;
     try {
-      const res = await fetch('http://localhost:4000/api/agents/activity', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await apiFetch('/agents/activity');
       if (res.ok) set({ activities: await res.json() });
     } catch { /* silent */ }
   },

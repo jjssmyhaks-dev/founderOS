@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
+import { apiFetch } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -31,10 +32,8 @@ export default function SettingsPage() {
   const handleSaveAutonomy = async () => {
     setSaving(true);
     try {
-      const token = localStorage.getItem('helm_token');
-      const res = await fetch('http://localhost:4000/api/auth/autonomy-settings', {
+      const res = await apiFetch('/auth/autonomy-settings', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(Object.fromEntries(Object.entries(tiers).map(([k, v]) => [k, { defaultTier: v }]))),
       });
       if (res.ok) toast.success('Autonomy settings saved');

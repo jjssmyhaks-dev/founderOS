@@ -1,7 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
+import { apiHeaders } from '@/lib/api';
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
+const adminFetch = (path: string, opts?: RequestInit) => {
+  return fetch(API + path, { ...opts, headers: { ...apiHeaders(), ...opts?.headers } });
+};
 
 type Tab = "overview" | "traces" | "cost" | "leaderboard" | "evals" | "memory";
 
@@ -92,9 +97,9 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     Promise.all([
-      fetch(API + "/observability/metrics/layers?hours=168").then(r => r.json()).catch(() => []),
-      fetch(API + "/observability/leaderboard").then(r => r.json()).catch(() => []),
-      fetch(API + "/observability/eval/history").then(r => r.json()).catch(() => []),
+      adminFetch("/observability/metrics/layers?hours=168").then(r => r.json()).catch(() => []),
+      adminFetch("/observability/leaderboard").then(r => r.json()).catch(() => []),
+      adminFetch("/observability/eval/history").then(r => r.json()).catch(() => []),
     ]).then(([lm, lb, ev]) => {
       setLayerMetrics(lm); setLeaderboard(lb); setEvalHistory(ev);
       setLoading(false);
@@ -102,19 +107,19 @@ export default function AdminDashboard() {
   }, []);
 
   const loadTraces = async () => {
-    const r = await fetch(API + "/observability/traces?limit=50");
+    const r = await adminFetch("/observability/traces?limit=50");
     setTraces(await r.json());
   };
 
   const loadTraceDetail = async (id: string) => {
-    const r = await fetch(API + "/observability/traces/" + id);
+    const r = await adminFetch("/observability/traces/" + id);
     setSelectedTrace(await r.json());
   };
 
   const loadMemories = async (type?: string) => {
     const params = new URLSearchParams();
     if (type) params.set("memoryType", type);
-    const r = await fetch(API + "/memory/00000000-0000-0000-0000-000000000000?" + params);
+    const r = await adminFetch("/memory/00000000-0000-0000-0000-000000000000?" + params);
     setMemories(await r.json());
   };
 

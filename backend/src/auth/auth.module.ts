@@ -7,12 +7,14 @@ import { JwtStrategy } from './jwt.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AgentModule } from '../agents/agents.module';
 import { CommonModule } from '../common/common.module';
+import { OnboardingModule } from '../onboarding/onboarding.module';
 
 @Module({
   imports: [
     PrismaModule,
     AgentModule,
     CommonModule,
+    OnboardingModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'helm-dev-secret-change-me',

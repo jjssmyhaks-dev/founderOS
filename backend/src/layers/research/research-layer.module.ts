@@ -6,6 +6,7 @@ import { AgentRuntimeModule } from '../../agent-runtime/agent-runtime.module';
 import { ActivityModule } from '../../activity/activity.module';
 
 @Module({
+  imports: [PrismaModule, EventModule, AgentRuntimeModule, ActivityModule],
   providers: [ResearchLayerService],
   exports: [ResearchLayerService],
 })

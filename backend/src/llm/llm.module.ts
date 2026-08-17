@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { Module, Global } from '@nestjs/common';
 import { LlmService } from './llm.service';
 
+@Global()
 @Module({
   providers: [LlmService],
   exports: [LlmService],

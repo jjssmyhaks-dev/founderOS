@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiFetch } from '@/lib/api';
 
 export interface ChatMsg {
   id: string;
@@ -39,14 +40,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const optimistic: ChatMsg = { id: `tmp-${Date.now()}`, sessionId: get().currentSessionId || '', role: 'FOUNDER', content, createdAt: new Date().toISOString() };
     set(s => ({ messages: [...s.messages, optimistic], isLoading: true }));
     try {
-      const res = await fetch('http://localhost:4000/api/chat/message', {
+      const res = await apiFetch('/chat/message', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ content, sessionId: get().currentSessionId }),
       });
-      if (!res.ok) throw new Error('Failed');
+      if (!res.ok) throw new Error('Failed to send message');
       const data = await res.json();
-      const agentMsg: ChatMsg = { id: data.response?.id || `resp-${Date.now()}`, sessionId: data.sessionId || get().currentSessionId || '', role: 'AGENT', content: data.response?.content || 'No response', agentId: data.response?.agentId, layer: data.response?.layer, createdAt: new Date().toISOString(), metadata: data.response?.metadata };
+      const agentMsg: ChatMsg = {
+        id: data.response?.id || `resp-${Date.now()}`,
+        sessionId: data.sessionId || get().currentSessionId || '',
+        role: 'AGENT',
+        content: data.response?.content || 'No response',
+        agentId: data.response?.agentId,
+        layer: data.response?.layer,
+        createdAt: new Date().toISOString(),
+        metadata: data.response?.metadata,
+      };
       const updatedOnboarding = data.isOnboarding !== undefined ? !data.isOnboarding : get().isOnboarding;
       set(s => ({
         messages: [
@@ -58,19 +67,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
         isLoading: false,
         isOnboarding: updatedOnboarding,
       }));
-    } catch { set({ isLoading: false }); }
+    } catch (err) {
+      console.error('Chat error:', err);
+      set(s => ({ messages: s.messages.map(m => m.id === optimistic.id ? { ...m, _error: true } : m), isLoading: false }));
+    }
   },
+
   addMessage: (msg) => set(s => ({ messages: [...s.messages, msg] })),
   setSession: (id) => set({ currentSessionId: id, messages: [] }),
   setLoading: (v) => set({ isLoading: v }),
   setRecording: (v) => set({ isRecording: v }),
   setOnboarding: (v) => set({ isOnboarding: v }),
+
   loadHistory: async () => {
-    const token = localStorage.getItem('helm_token');
-    if (!token) return;
     try {
-      const res = await fetch('http://localhost:4000/api/chat/history', { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) { const data = await res.json(); if (data.messages?.length) set({ messages: data.messages, currentSessionId: data.messages[0].sessionId }); }
+      const res = await apiFetch('/chat/history');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.messages?.length) set({ messages: data.messages, currentSessionId: data.messages[0].sessionId });
+      }
     } catch { /* silent */ }
   },
 }));
