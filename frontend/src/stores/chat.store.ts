@@ -10,6 +10,7 @@ export interface ChatMsg {
   layer?: string;
   createdAt: string;
   metadata?: { onboarding?: boolean; isOnboarding?: boolean };
+  _error?: boolean;
 }
 
 interface ChatState {

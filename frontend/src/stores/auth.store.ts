@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { apiFetch, apiHeaders } from '@/lib/api';
 
 interface AuthState {
-  user: { id: string; email: string; name: string; businessName?: string | null } | null;
+  user: { id: string; email: string; name: string; businessName?: string | null; timezone?: string | null } | null;
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;

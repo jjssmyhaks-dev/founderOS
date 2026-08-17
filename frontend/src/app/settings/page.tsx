@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
 import { apiFetch } from '@/lib/api';
 import { useRouter } from 'next/navigation';
+import AuthGuard from '@/components/AuthGuard';
+import { toast } from '@/components/Toast';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
-import toast from 'react-hot-toast';
 
 const TIERS = [
   { value: 'AUTO_EXECUTE', label: 'Auto-Execute', desc: 'Reversible, no cost. Executes immediately.' },
@@ -21,24 +22,31 @@ const LAYER_TIERS = [
 ];
 
 export default function SettingsPage() {
+  return (
+    <AuthGuard>
+      <SettingsContent />
+    </AuthGuard>
+  );
+}
+
+function SettingsContent() {
   const user = useAuthStore(s => s.user);
-  const setUser = useAuthStore(s => s.setUser);
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [tiers, setTiers] = useState<Record<string, string>>(
     Object.fromEntries(LAYER_TIERS.map(l => [l.key, l.defaultTier]))
   );
 
-  const handleSaveAutonomy = async () => {
+  const handleSave = async () => {
     setSaving(true);
     try {
       const res = await apiFetch('/auth/autonomy-settings', {
         method: 'PATCH',
         body: JSON.stringify(Object.fromEntries(Object.entries(tiers).map(([k, v]) => [k, { defaultTier: v }]))),
       });
-      if (res.ok) toast.success('Autonomy settings saved');
-      else toast.error('Failed to save');
-    } catch { toast.error('Failed to save'); }
+      if (res.ok) toast('success', 'Settings saved');
+      else toast('error', 'Failed to save');
+    } catch { toast('error', 'Failed to save'); }
     setSaving(false);
   };
 
@@ -48,36 +56,21 @@ export default function SettingsPage() {
         <button onClick={() => router.back()} className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-6 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
-
         <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-8">Settings</h1>
 
-        {/* Profile */}
         <section className="mb-10">
           <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Profile</h2>
           <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-5 space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">Name</label>
-                <div className="text-sm text-[var(--text-primary)] bg-[var(--bg-primary)] rounded-lg px-3 py-2 border border-[var(--border)]">{user?.name || '—'}</div>
-              </div>
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">Email</label>
-                <div className="text-sm text-[var(--text-primary)] bg-[var(--bg-primary)] rounded-lg px-3 py-2 border border-[var(--border)]">{user?.email || '—'}</div>
-              </div>
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">Business</label>
-                <div className="text-sm text-[var(--text-primary)] bg-[var(--bg-primary)] rounded-lg px-3 py-2 border border-[var(--border)]">{user?.businessName || '—'}</div>
-              </div>
-              <div>
-                <label className="block text-sm text-[var(--text-secondary)] mb-1">Timezone</label>
-                <div className="text-sm text-[var(--text-primary)] bg-[var(--bg-primary)] rounded-lg px-3 py-2 border border-[var(--border)]">Asia/Calcutta</div>
-              </div>
+              <div><label className="block text-sm text-[var(--text-secondary)] mb-1">Name</label><div className="text-sm text-[var(--text-primary)] bg-[var(--bg-primary)] rounded-lg px-3 py-2 border border-[var(--border)]">{user?.name || '—'}</div></div>
+              <div><label className="block text-sm text-[var(--text-secondary)] mb-1">Email</label><div className="text-sm text-[var(--text-primary)] bg-[var(--bg-primary)] rounded-lg px-3 py-2 border border-[var(--border)]">{user?.email || '—'}</div></div>
+              <div><label className="block text-sm text-[var(--text-secondary)] mb-1">Business</label><div className="text-sm text-[var(--text-primary)] bg-[var(--bg-primary)] rounded-lg px-3 py-2 border border-[var(--border)]">{user?.businessName || '—'}</div></div>
+              <div><label className="block text-sm text-[var(--text-secondary)] mb-1">Timezone</label><div className="text-sm text-[var(--text-primary)] bg-[var(--bg-primary)] rounded-lg px-3 py-2 border border-[var(--border)]">{user?.timezone || 'UTC'}</div></div>
             </div>
           </div>
         </section>
 
-        {/* Autonomy Controls */}
-        <section className="mb-10">
+        <section>
           <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-2">Autonomy Controls</h2>
           <p className="text-sm text-[var(--text-secondary)] mb-4">Control how much each layer can do without asking. Finance defaults to requiring approval.</p>
           <div className="space-y-3">
@@ -89,32 +82,18 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex gap-2">
                   {TIERS.map(tier => (
-                    <button
-                      key={tier.value}
-                      onClick={() => setTiers(prev => ({ ...prev, [layer.key]: tier.value }))}
-                      className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                        tiers[layer.key] === tier.value
-                          ? 'bg-[var(--accent)] text-white ring-2 ring-[var(--accent)]/30'
-                          : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] border border-[var(--border)] hover:border-[var(--accent)]/50'
-                      }`}
-                    >
+                    <button key={tier.value} onClick={() => setTiers(prev => ({ ...prev, [layer.key]: tier.value }))}
+                      className={"flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all " + (tiers[layer.key] === tier.value ? 'bg-[var(--accent)] text-white ring-2 ring-[var(--accent)]/30' : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] border border-[var(--border)] hover:border-[var(--accent)]/50')}>
                       {tier.label}
                     </button>
                   ))}
                 </div>
-                <p className="text-[10px] text-[var(--text-muted)] mt-2">
-                  {TIERS.find(t => t.value === tiers[layer.key])?.desc}
-                </p>
+                <p className="text-[10px] text-[var(--text-muted)] mt-2">{TIERS.find(t => t.value === tiers[layer.key])?.desc}</p>
               </div>
             ))}
           </div>
-          <button
-            onClick={handleSaveAutonomy}
-            disabled={saving}
-            className="mt-4 flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] disabled:opacity-50 transition-colors"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Save Settings
+          <button onClick={handleSave} disabled={saving} className="mt-4 flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save Settings
           </button>
         </section>
       </div>

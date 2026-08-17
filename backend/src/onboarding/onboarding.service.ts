@@ -48,20 +48,22 @@ export class OnboardingService {
   async getFounderInfo(founderId: string) {
     const founder = await this.prisma.founder.findUnique({
       where: { id: founderId },
-      select: { id: true, name: true, businessName: true, email: true, timezone: true },
+      select: { id: true, name: true, businessName: true, email: true, timezone: true, onboardingComplete: true },
     });
     return founder;
   }
 
   async isOnboardingComplete(founderId: string): Promise<boolean> {
+    // Check DB first (persistent across restarts)
+    const founder = await this.prisma.founder.findUnique({
+      where: { id: founderId },
+      select: { onboardingComplete: true },
+    });
+    if (founder?.onboardingComplete) return true;
+
+    // Check in-memory state
     const state = this.states.get(founderId);
-    if (!state) {
-      const memories = await this.prisma.contextNote.count({
-        where: { founderId, memoryType: 'business_fact', status: 'active' },
-      });
-      return memories > 0;
-    }
-    return !state.isOnboarding || state.firstActionCompleted;
+    return !state?.isOnboarding || state.firstActionCompleted;
   }
 
   async getOnboardingState(founderId: string): Promise<OnboardingState> {
@@ -82,12 +84,15 @@ export class OnboardingService {
   async handleOnboardingMessage(founderId: string, message: string): Promise<{ response: string; isOnboarding: boolean }> {
     const state = await this.getOnboardingState(founderId);
 
+    // Question 1: first response
     if (state.questionCount === 0) {
       state.questionCount = 1;
       this.states.set(founderId, state);
 
       const response = await this.llm.complete({
-        prompt: `${message}\n\nRespond naturally as if this is the start of a conversation. Ask ONE follow-up question about their business.`,
+        prompt: `${message}
+
+Respond naturally as if this is the start of a conversation. Ask ONE follow-up question about their business.`,
         system: ONBOARDING_SYSTEM_PROMPT,
         maxTokens: 512,
       });
@@ -96,6 +101,7 @@ export class OnboardingService {
 
     state.questionCount++;
 
+    // Max questions reached -> propose first action
     if (state.questionCount >= state.maxQuestions && !state.firstActionProposed) {
       state.firstActionProposed = true;
       this.states.set(founderId, state);
@@ -104,31 +110,61 @@ export class OnboardingService {
       return { response: action, isOnboarding: true };
     }
 
+    // Founder responded to action proposal
     if (state.firstActionProposed && !state.firstActionCompleted) {
       const lower = message.toLowerCase();
-      const isAffirmative = ['yes', 'sure', 'go', 'do it', 'ok', 'yeah', 'please', 'please do'].some(w => lower.includes(w));
+      const isAffirmative = ['yes', 'sure', 'go', 'do it', 'ok', 'yeah', 'please', 'please do', 'go ahead', 'let\'s do it', 'absolutely', 'definitely'].some(w => lower.includes(w));
 
       if (isAffirmative) {
         state.firstActionCompleted = true;
         state.isOnboarding = false;
         this.states.set(founderId, state);
+
+        // Persist to DB
+        await this.prisma.founder.update({
+          where: { id: founderId },
+          data: { onboardingComplete: true },
+        });
+
         return {
           response: 'Great, I\'m on it. While that runs, feel free to ask me anything or give me tasks. I\'ll keep learning about your business as we work together.',
           isOnboarding: false,
         };
       }
 
+      // Not affirmative - either decline or off-topic
+      if (['no', 'nope', 'not yet', 'later', 'skip', 'decline'].some(w => lower.includes(w))) {
+        // They declined - mark onboarding done anyway, they can come back
+        state.firstActionCompleted = true;
+        state.isOnboarding = false;
+        this.states.set(founderId, state);
+        await this.prisma.founder.update({
+          where: { id: founderId },
+          data: { onboardingComplete: true },
+        });
+        return {
+          response: 'No problem. You can always ask me to do things later. What would you like to work on?',
+          isOnboarding: false,
+        };
+      }
+
+      // Off-topic or question about the proposal
       const response = await this.llm.complete({
-        prompt: `${message}\n\nThe founder responded to your action proposal. If they declined, suggest something else small. Keep it natural and brief.`,
+        prompt: `${message}
+
+The founder responded to your action proposal but didn\'t clearly say yes or no. Address their question, then ask again if they want you to go ahead. Keep it brief.`,
         system: ONBOARDING_SYSTEM_PROMPT,
         maxTokens: 512,
       });
-      return { response, isOnboarding: false };
+      return { response, isOnboarding: true };
     }
 
+    // Normal follow-up questions
     const remaining = state.maxQuestions - state.questionCount;
     const response = await this.llm.complete({
-      prompt: `${message}\n\nAsk ONE follow-up question. You have asked ${state.questionCount - 1} questions so far and have ${remaining} more available. Make it count.`,
+      prompt: `${message}
+
+Ask ONE follow-up question. You have asked ${state.questionCount - 1} questions so far and have ${remaining} more available. Make it count.`,
       system: ONBOARDING_SYSTEM_PROMPT,
       maxTokens: 512,
     });
@@ -160,6 +196,21 @@ export class OnboardingService {
     return response;
   }
 
+  async markOnboardingComplete(founderId: string) {
+    const state = this.states.get(founderId);
+    if (state) {
+      state.isOnboarding = false;
+      state.firstActionCompleted = true;
+      this.states.set(founderId, state);
+    }
+    // Always persist to DB
+    await this.prisma.founder.update({
+      where: { id: founderId },
+      data: { onboardingComplete: true },
+    });
+    this.logger.log(`Onboarding marked complete for founder ${founderId}`);
+  }
+
   private async extractAndSaveContext(founderId: string, lastMessage: string) {
     const state = this.states.get(founderId);
     if (!state) return;
@@ -185,7 +236,7 @@ export class OnboardingService {
             confidence: 'inferred',
           });
         }
-        this.logger.log(`Extracted ${Math.min(facts.length, 5)} business facts from onboarding conversation`);
+        this.logger.log(`Extracted ${Math.min(facts.length, 5)} business facts from onboarding`);
       }
     } catch (e) {
       this.logger.warn('Failed to extract context from onboarding: ' + String(e));
@@ -200,14 +251,5 @@ export class OnboardingService {
     const prompt = `Based on what you know about this founder, propose ONE small, concrete, low-risk action you can take right now. It must be Tier 1 or Tier 2 only (no approval needed). Be specific about what you will do and what they will get. End by asking if they want you to go ahead.${contextBlock}`;
 
     return this.llm.complete({ prompt, system: ONBOARDING_SYSTEM_PROMPT, maxTokens: 512 });
-  }
-
-  async markOnboardingComplete(founderId: string) {
-    const state = this.states.get(founderId);
-    if (state) {
-      state.isOnboarding = false;
-      state.firstActionCompleted = true;
-      this.states.set(founderId, state);
-    }
   }
 }

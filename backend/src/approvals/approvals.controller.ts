@@ -1,14 +1,6 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ApprovalService } from './approvals.service';
-import { ResolveApprovalDto } from './dto/approvals.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/jwt-auth.decorator';
 
@@ -20,8 +12,8 @@ export class ApprovalsController {
   constructor(private readonly approvalService: ApprovalService) {}
 
   @Get()
-  async getPendingQueue(@CurrentUser('id') founderId: string) {
-    return this.approvalService.getPendingQueue(founderId);
+  async getPending(@CurrentUser('id') founderId: string) {
+    return this.approvalService.getPending(founderId);
   }
 
   @Post(':id/approve')
@@ -30,20 +22,12 @@ export class ApprovalsController {
   }
 
   @Post(':id/reject')
-  async reject(
-    @CurrentUser('id') founderId: string,
-    @Param('id') id: string,
-    @Body() dto: ResolveApprovalDto,
-  ) {
-    return this.approvalService.reject(id, founderId, dto.resolution);
+  async reject(@CurrentUser('id') founderId: string, @Param('id') id: string) {
+    return this.approvalService.reject(id, founderId);
   }
 
   @Post(':id/edit')
-  async edit(
-    @CurrentUser('id') founderId: string,
-    @Param('id') id: string,
-    @Body() dto: ResolveApprovalDto,
-  ) {
-    return this.approvalService.edit(id, founderId, dto.editedAction!);
+  async edit(@CurrentUser('id') founderId: string, @Param('id') id: string, @Body() body: { editedAction: string }) {
+    return this.approvalService.edit(id, founderId, body.editedAction);
   }
 }
