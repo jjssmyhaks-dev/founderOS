@@ -67,7 +67,7 @@ export class ApprovalService {
         if (task) {
           const agentTask = {
             taskId: task.id,
-            agentId: task.agentId || 'research.market_analyst',
+            agentId: task.agentId || 'campaign-deep-dive',
             triggerType: 'orchestrator_assigned' as const,
             goal: task.description || approval.action,
             contextRefs: [],

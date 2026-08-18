@@ -32,6 +32,18 @@ export class AgentRuntimeService {
     const startTime = Date.now();
     const traceId = task.traceId || uuidv4();
     this.logger.log('Starting task ' + task.taskId + ' for agent ' + task.agentId + ' trace=' + traceId);
+
+    // Ensure the parent trace exists before emitting spans (Span has FK -> Trace)
+    try {
+      await this.prisma.trace.upsert({
+        where: { id: traceId },
+        create: { id: traceId, originType: 'event_triggered', originRef: task.taskId, founderId: task.founderId, status: 'in_progress' },
+        update: {},
+      });
+    } catch (e) {
+      this.logger.warn('Failed to upsert trace ' + traceId + ': ' + String(e));
+    }
+
     await this.spanEmitter.emit({ traceId, agentId: task.agentId, taskId: task.taskId, spanType: 'task', status: 'in_progress', inputSummary: task.goal.substring(0, 200) });
 
     try {

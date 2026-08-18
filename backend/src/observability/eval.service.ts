@@ -35,7 +35,7 @@ export class EvalService {
           systemPrompt: 'You are being evaluated. Respond accurately and concisely.',
           model: MODEL_TIERS.DEFAULT, maxSteps: 4, contextTokenBudget: 4000, toolIds: [],
         };
-        await this.prisma.task.create({ data: { id: taskId, agentId, founderId: 'system', layer: 'EVAL', description: 'Eval: ' + tc.name, goal: String(tc.input), triggerType: 'orchestrator_assigned', status: 'PENDING', riskTier: 'NOTIFY_AND_ACT', maxSteps: 4 } as any });
+        await this.prisma.task.create({ data: { id: taskId, agentId, founderId: 'system', layer: 'EVAL', title: 'Eval: ' + tc.name, description: 'Eval: ' + tc.name, goal: String(tc.input), triggerType: 'orchestrator_assigned', status: 'PENDING', riskTier: 'NOTIFY_AND_ACT', maxSteps: 4 } });
 
         const result = await this.runtime.executeTask({
           taskId, agentId, triggerType: 'event_triggered', goal: String(tc.input),

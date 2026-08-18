@@ -32,19 +32,19 @@ export class ScheduledTriggerService implements OnModuleInit {
 
   private registerDefaultTriggers() {
     this.triggers.set('research.daily_competitor_scan', {
-      agentId: 'research.competitor_intel', cronExpr: '0 9 * * 1-5',
+      agentId: 'competitor-intelligence', cronExpr: '0 9 * * 1-5',
       goal: 'Run daily competitive landscape scan. Check for new competitor products, pricing changes, and market moves.',
       layer: 'RESEARCH', founderId: 'system',
       systemPrompt: 'You are a competitive intelligence agent.', modelTier: 'RESEARCH_DEEP', maxSteps: 12,
     });
     this.triggers.set('marketing.weekly_content_review', {
-      agentId: 'marketing.performance_marketer', cronExpr: '0 10 * * 0',
+      agentId: 'performance-marketer', cronExpr: '0 10 * * 0',
       goal: 'Review weekly content and campaign performance. Identify top performers and underperformers.',
       layer: 'MARKETING', founderId: 'system',
       systemPrompt: 'You are a performance marketing analyst.', modelTier: 'MARKETING', maxSteps: 8,
     });
     this.triggers.set('finance.daily_cashflow', {
-      agentId: 'finance.bookkeeper', cronExpr: '0 8 * * 1-6',
+      agentId: 'bookkeeping', cronExpr: '0 8 * * 1-6',
       goal: 'Review daily cash flow status. Flag concerning trends or overdue receivables.',
       layer: 'FINANCE', founderId: 'system',
       systemPrompt: 'You are a financial bookkeeping agent.', modelTier: 'FINANCE', maxSteps: 6,
@@ -57,7 +57,7 @@ export class ScheduledTriggerService implements OnModuleInit {
     const taskId = uuidv4();
     this.logger.log('Firing trigger: ' + triggerId);
     await this.prisma.task.create({
-      data: { id: taskId, agentId: trigger.agentId, founderId: trigger.founderId, layer: trigger.layer, description: 'Scheduled: ' + trigger.goal, goal: trigger.goal, triggerType: 'scheduled', status: 'PENDING', riskTier: 'NOTIFY_AND_ACT', maxSteps: trigger.maxSteps || 8 } as any,
+      data: { id: taskId, agentId: trigger.agentId, founderId: trigger.founderId, layer: trigger.layer, title: 'Scheduled: ' + trigger.goal.substring(0, 120), description: 'Scheduled: ' + trigger.goal, goal: trigger.goal, triggerType: 'scheduled', status: 'PENDING', riskTier: 'NOTIFY_AND_ACT', maxSteps: trigger.maxSteps || 8 },
     });
     const config: AgentConfig = {
       agentId: trigger.agentId, name: triggerId, layer: trigger.layer,

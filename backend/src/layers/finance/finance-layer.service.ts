@@ -21,18 +21,24 @@ export class FinanceLayerService {
       model: MODEL_TIERS.FINANCE, maxSteps: 8, contextTokenBudget: 8000, toolIds: [],
     };
     await this.prisma.task.create({
-      data: { id: taskId, agentId, founderId, layer: 'FINANCE', description: goal, goal, triggerType: 'orchestrator_assigned', status: 'PENDING', riskTier: 'APPROVAL_REQUIRED', maxSteps: 8 } as any,
+      data: {
+        id: taskId, agentId, founderId, layer: 'FINANCE',
+        title: goal.substring(0, 120), description: goal, goal,
+        triggerType: 'orchestrator_assigned', status: 'PENDING', riskTier: 'APPROVAL_REQUIRED', maxSteps: 8,
+      },
     });
     await this.activity.logActivity({ founderId, type: 'TASK_STARTED', description: 'Finance: ' + goal.substring(0, 80) });
-    this.runtime.executeTask({ taskId, agentId, triggerType: 'orchestrator_assigned', goal, contextRefs: routing?.contextRefs || [], riskTierHint: "APPROVAL_REQUIRED" as any, deadline: null, parentTaskId: routing?.parentTaskId || null, founderId, layer: 'FINANCE' }, agentDef).catch(e => this.activity.logActivity({ founderId, type: 'TASK_FAILED', description: 'Finance task failed: ' + String(e) }));
+    this.runtime.executeTask({ taskId, agentId, triggerType: 'orchestrator_assigned', goal, contextRefs: routing?.contextRefs || [], riskTierHint: 'APPROVAL_REQUIRED' as any, deadline: null, parentTaskId: routing?.parentTaskId || null, founderId, layer: 'FINANCE' }, agentDef).catch(e => this.activity.logActivity({ founderId, type: 'TASK_FAILED', description: 'Finance task failed: ' + String(e) }));
     return { content: '**Finance Layer** \ud83d\udcb0\n\nTask dispatched to ' + agentId + '. Tracking: ' + taskId.substring(0, 8) + '...\n\nNote: Financial actions require your approval before execution.\n\nWorking on: ' + goal, metadata: { taskId, subAgent: agentId } };
   }
 
   async handleMessage(founderId: string, message: string, routing: any) {
     const lower = message.toLowerCase();
-    if (lower.includes('bookkeep') || lower.includes('invoice') || lower.includes('receipt')) return this.dispatch(founderId, 'finance.bookkeeper', message, routing);
-    if (lower.includes('gst') || lower.includes('tax') || lower.includes('compliance') || lower.includes('gst_return')) return this.dispatch(founderId, 'finance.gst_compliance_agent', message, routing);
-    if (lower.includes('cash') || lower.includes('revenue') || lower.includes('pnl') || lower.includes('burn')) return this.dispatch(founderId, 'finance.cashflow_forecaster', message, routing);
-    return this.dispatch(founderId, 'finance.bookkeeper', message, routing);
+    if (lower.includes('gst') || lower.includes('tax') || lower.includes('compliance') || lower.includes('regulatory')) return this.dispatch(founderId, 'compliance-tax', message, routing);
+    if (lower.includes('cash') || lower.includes('revenue') || lower.includes('pnl') || lower.includes('burn') || lower.includes('runway') || lower.includes('forecast')) return this.dispatch(founderId, 'cashflow-forecasting', message, routing);
+    if (lower.includes('pricing') || lower.includes('margin') || lower.includes('unit economics') || lower.includes('cac') || lower.includes('ltv')) return this.dispatch(founderId, 'pricing-unit-economics', message, routing);
+    if (lower.includes('investor') || lower.includes('fundraising') || lower.includes('pitch') || lower.includes('funding')) return this.dispatch(founderId, 'fundraising-investor-relations', message, routing);
+    if (lower.includes('bookkeep') || lower.includes('invoice') || lower.includes('receipt') || lower.includes('transaction') || lower.includes('categorize')) return this.dispatch(founderId, 'bookkeeping', message, routing);
+    return this.dispatch(founderId, 'bookkeeping', message, routing);
   }
 }

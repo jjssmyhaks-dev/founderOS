@@ -26,6 +26,7 @@ interface ChatState {
   setRecording: (v: boolean) => void;
   setOnboarding: (v: boolean) => void;
   loadHistory: () => Promise<void>;
+  loadOpening: () => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -86,6 +87,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (res.ok) {
         const data = await res.json();
         if (data.messages?.length) set({ messages: data.messages, currentSessionId: data.messages[0].sessionId });
+      }
+    } catch { /* silent */ }
+  },
+
+  loadOpening: async () => {
+    try {
+      const res = await apiFetch('/onboarding/opening');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.message) {
+          set(s => ({
+            messages: [...s.messages, { id: 'opening-' + Date.now(), sessionId: s.currentSessionId || '', role: 'AGENT', content: data.message, agentId: 'global-orchestrator', layer: 'GLOBAL', createdAt: new Date().toISOString(), metadata: { onboarding: true } }],
+            isOnboarding: true,
+          }));
+        }
       }
     } catch { /* silent */ }
   },

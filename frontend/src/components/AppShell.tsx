@@ -7,6 +7,7 @@ import AppHeader from './AppHeader';
 import { useApprovalStore } from '@/stores/approvals.store';
 import { useConnectorStore } from '@/stores/connectors.store';
 import { useChatStore } from '@/stores/chat.store';
+import { useAuthStore } from '@/stores/auth.store';
 import { useWebSocket } from '@/lib/websocket';
 
 export default function AppShell() {
@@ -14,6 +15,8 @@ export default function AppShell() {
   const fetchApprovals = useApprovalStore((s) => s.fetchApprovals);
   const fetchConnectors = useConnectorStore((s) => s.fetchConnectors);
   const loadHistory = useChatStore((s) => s.loadHistory);
+  const loadOpening = useChatStore((s) => s.loadOpening);
+  const needsOnboarding = useAuthStore((s) => s.needsOnboarding);
 
   // WebSocket for live updates
   useWebSocket((msg) => {
@@ -23,8 +26,12 @@ export default function AppShell() {
   useEffect(() => {
     fetchApprovals();
     fetchConnectors();
-    loadHistory();
-  }, [fetchApprovals, fetchConnectors, loadHistory]);
+    if (needsOnboarding) {
+      loadOpening();
+    } else {
+      loadHistory();
+    }
+  }, [fetchApprovals, fetchConnectors, loadHistory, loadOpening, needsOnboarding]);
 
   // Close side panel on small screens by default
   useEffect(() => {

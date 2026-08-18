@@ -34,9 +34,9 @@ export class HandoffService implements OnModuleInit {
     // Cross-layer handoff: events published by one layer can trigger agents in another
     const crossLayerRules: Array<{ event: string; targetAgents: string[] }> = [
       { event: 'task.completed', targetAgents: [] }, // handled by orchestrators, not direct
-      { event: 'research.competitor_update', targetAgents: ['marketing.content_copywriter', 'marketing.social_media_manager'] },
-      { event: 'marketing.campaign_launched', targetAgents: ['operations.scheduling_coordinator'] },
-      { event: 'finance.cashflow_alert', targetAgents: ['operations.scheduling_coordinator'] },
+      { event: 'research.competitor_update', targetAgents: ['content-copywriter', 'social-community'] },
+      { event: 'marketing.campaign_launched', targetAgents: ['scheduling-capacity'] },
+      { event: 'finance.cashflow_alert', targetAgents: ['scheduling-capacity'] },
       { event: 'approval.requested', targetAgents: [] }, // handled by approval queue UI
     ];
 

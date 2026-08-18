@@ -54,16 +54,18 @@ export class OnboardingService {
   }
 
   async isOnboardingComplete(founderId: string): Promise<boolean> {
-    // Check DB first (persistent across restarts)
+    // DB is the source of truth for completion
     const founder = await this.prisma.founder.findUnique({
       where: { id: founderId },
       select: { onboardingComplete: true },
     });
     if (founder?.onboardingComplete) return true;
 
-    // Check in-memory state
+    // In-memory: a founder with no state has NOT started onboarding yet
     const state = this.states.get(founderId);
-    return !state?.isOnboarding || state.firstActionCompleted;
+    if (!state) return false;
+
+    return !state.isOnboarding || state.firstActionCompleted;
   }
 
   async getOnboardingState(founderId: string): Promise<OnboardingState> {

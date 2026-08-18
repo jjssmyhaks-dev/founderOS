@@ -1,5 +1,6 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/jwt-auth.decorator';
 import { OnboardingService } from './onboarding.service';
 import { ContextCompletenessService } from './context-completeness.service';
 
@@ -12,8 +13,7 @@ export class OnboardingController {
   ) {}
 
   @Get('status')
-  async getStatus(@Req() req: any) {
-    const founderId = req.user.sub;
+  async getStatus(@CurrentUser('id') founderId: string) {
     const isComplete = await this.onboarding.isOnboardingComplete(founderId);
     const state = await this.onboarding.getOnboardingState(founderId);
     return {
@@ -26,16 +26,14 @@ export class OnboardingController {
   }
 
   @Get('completeness')
-  async getCompleteness(@Req() req: any) {
-    const founderId = req.user.sub;
+  async getCompleteness(@CurrentUser('id') founderId: string) {
     const layers = await this.completeness.getCompleteness(founderId);
     const overall = await this.completeness.getOverallScore(founderId);
     return { overall, layers };
   }
 
   @Get('opening')
-  async getOpeningMessage(@Req() req: any) {
-    const founderId = req.user.sub;
+  async getOpeningMessage(@CurrentUser('id') founderId: string) {
     const founder = await this.onboarding.getFounderInfo(founderId);
     if (!founder) throw new Error('Founder not found');
     const message = await this.onboarding.handleOpeningMessage(

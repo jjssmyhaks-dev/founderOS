@@ -1,4 +1,8 @@
-import { RiskTier } from '@helm/shared';
+export enum RiskTier {
+  AUTO_EXECUTE = 'AUTO_EXECUTE',
+  NOTIFY_AND_ACT = 'NOTIFY_AND_ACT',
+  APPROVAL_REQUIRED = 'APPROVAL_REQUIRED',
+}
 
 export interface AgentTask {
   taskId: string;

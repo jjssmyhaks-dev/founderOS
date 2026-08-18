@@ -17,6 +17,7 @@ import { OnboardingModule } from '../onboarding/onboarding.module';
     OnboardingModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
+      global: true,
       secret: process.env.JWT_SECRET || 'helm-dev-secret-change-me',
       signOptions: { expiresIn: '7d' },
     }),

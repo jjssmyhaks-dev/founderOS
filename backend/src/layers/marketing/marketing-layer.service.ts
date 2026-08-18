@@ -21,7 +21,11 @@ export class MarketingLayerService {
       model: MODEL_TIERS.MARKETING, maxSteps: 8, contextTokenBudget: 8000, toolIds: [],
     };
     await this.prisma.task.create({
-      data: { id: taskId, agentId, founderId, layer: 'MARKETING', description: goal, goal, triggerType: 'orchestrator_assigned', status: 'PENDING', riskTier: 'NOTIFY_AND_ACT', maxSteps: 8 } as any,
+      data: {
+        id: taskId, agentId, founderId, layer: 'MARKETING',
+        title: goal.substring(0, 120), description: goal, goal,
+        triggerType: 'orchestrator_assigned', status: 'PENDING', riskTier: 'NOTIFY_AND_ACT', maxSteps: 8,
+      },
     });
     await this.activity.logActivity({ founderId, type: 'TASK_STARTED', description: 'Marketing: ' + goal.substring(0, 80) });
     this.runtime.executeTask({ taskId, agentId, triggerType: 'orchestrator_assigned', goal, contextRefs: routing?.contextRefs || [], riskTierHint: null, deadline: null, parentTaskId: routing?.parentTaskId || null, founderId, layer: 'MARKETING' }, agentDef).catch(e => this.activity.logActivity({ founderId, type: 'TASK_FAILED', description: 'Marketing task failed: ' + String(e) }));
@@ -30,10 +34,11 @@ export class MarketingLayerService {
 
   async handleMessage(founderId: string, message: string, routing: any) {
     const lower = message.toLowerCase();
-    if (lower.includes('content') || lower.includes('blog') || lower.includes('copy')) return this.dispatch(founderId, 'marketing.content_copywriter', message, routing);
-    if (lower.includes('social') || lower.includes('post') || lower.includes('tweet')) return this.dispatch(founderId, 'marketing.social_media_manager', message, routing);
-    if (lower.includes('campaign') || lower.includes('ad') || lower.includes('performance')) return this.dispatch(founderId, 'marketing.performance_marketer', message, routing);
-    if (lower.includes('brand') || lower.includes('voice') || lower.includes('tone')) return this.dispatch(founderId, 'marketing.brand_voice', message, routing);
-    return this.dispatch(founderId, 'marketing.content_copywriter', message, routing);
+    if (lower.includes('content') || lower.includes('blog') || lower.includes('copy')) return this.dispatch(founderId, 'content-copywriter', message, routing);
+    if (lower.includes('social') || lower.includes('post') || lower.includes('tweet') || lower.includes('community')) return this.dispatch(founderId, 'social-community', message, routing);
+    if (lower.includes('campaign') || lower.includes('ad') || lower.includes('performance')) return this.dispatch(founderId, 'performance-marketer', message, routing);
+    if (lower.includes('seo') || lower.includes('search') || lower.includes('organic')) return this.dispatch(founderId, 'seo-specialist', message, routing);
+    if (lower.includes('brand') || lower.includes('voice') || lower.includes('tone') || lower.includes('strategy')) return this.dispatch(founderId, 'digital-marketing-strategist', message, routing);
+    return this.dispatch(founderId, 'content-copywriter', message, routing);
   }
 }

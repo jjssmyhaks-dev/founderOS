@@ -17,16 +17,19 @@ export interface LlmClassificationResult {
 }
 
 const MODEL_TIERS = {
-  FAST: 'llama-3.3-70b-versatile',
-  DEFAULT: 'llama-3.3-70b-versatile',
-  POWERFUL: 'llama-3.3-70b-versatile',
+  FAST: 'qwen/qwen3.6-27b',
+  DEFAULT: 'qwen/qwen3.6-27b',
+  POWERFUL: 'groq/compound',
 } as const;
 
 const GROQ_MODELS = [
-  'llama-3.3-70b-versatile',
-  'llama-3.1-8b-instant',
-  'mixtral-8x7b-32768',
-  'gemma2-9b-it',
+  'qwen/qwen3.6-27b',
+  'groq/compound',
+  'groq/compound-mini',
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
+  'allam-2-7b',
+  'canopylabs/orpheus-v1-english',
 ] as const;
 
 @Injectable()
@@ -69,11 +72,21 @@ export class LlmService implements OnModuleInit {
     return this.anthropicChat(messages, system, model, maxTokens);
   }
 
+  private sanitizeModel(model?: string): string {
+    if (model && (GROQ_MODELS as readonly string[]).includes(model)) return model;
+    return this.defaultModel;
+  }
+
+  // Reasoning models (like qwen3.6) emit <think>...</think> blocks — strip them
+  private stripThinking(text: string): string {
+    return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  }
+
   // ---- Groq implementation ----
 
   private async groqComplete(options: LlmCompleteOptions): Promise<string> {
     if (!this.client) throw new Error('Groq client not initialized. Set GROQ_API_KEY in .env');
-    const model = options.model || this.defaultModel;
+    const model = this.sanitizeModel(options.model);
     const maxTokens = options.maxTokens || 2048;
     try {
       const messages: Groq.Chat.ChatCompletionMessageParam[] = [];
@@ -84,7 +97,7 @@ export class LlmService implements OnModuleInit {
         this.client!.chat.completions.create({ model, messages, max_tokens: maxTokens, temperature: 0.7 }),
         3,
       );
-      return response.choices[0]?.message?.content || '';
+      return this.stripThinking(response.choices[0]?.message?.content || '');
     } catch (err) {
       this.logger.error('Groq complete failed: ' + (err instanceof Error ? err.message : String(err)));
       throw err;
@@ -93,6 +106,7 @@ export class LlmService implements OnModuleInit {
 
   private async groqChat(messages: Array<{ role: string; content: string }>, system?: string, model?: string, maxTokens?: number): Promise<string> {
     if (!this.client) throw new Error('Groq client not initialized. Set GROQ_API_KEY in .env');
+    const resolvedModel = this.sanitizeModel(model);
     try {
       const groqMessages: Groq.Chat.ChatCompletionMessageParam[] = [];
       if (system) groqMessages.push({ role: 'system', content: system });
@@ -104,14 +118,14 @@ export class LlmService implements OnModuleInit {
 
       const response = await this.retry(() =>
         this.client!.chat.completions.create({
-          model: model || this.defaultModel,
+          model: resolvedModel,
           messages: groqMessages,
           max_tokens: maxTokens || 4096,
           temperature: 0.7,
         }),
         3,
       );
-      return response.choices[0]?.message?.content || '';
+      return this.stripThinking(response.choices[0]?.message?.content || '');
     } catch (err) {
       this.logger.error('Groq chat failed: ' + (err instanceof Error ? err.message : String(err)));
       throw err;
