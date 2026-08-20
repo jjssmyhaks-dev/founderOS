@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth.store';
 import { toast } from './Toast';
 import { Building2, Globe, Mail, Lock, User, Loader2, Eye, EyeOff, Zap } from 'lucide-react';
@@ -44,21 +45,25 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] px-4 relative overflow-hidden">
+      {/* Background gradient */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--accent)_0%,_transparent_60%)] opacity-[0.03]" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-[var(--accent)]/5 blur-[100px] rounded-full" />
+      
+      <div className="w-full max-w-md relative z-10">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 mb-2">
+          <Link href="/" className="inline-flex items-center gap-2 mb-2">
             <div className="w-8 h-8 rounded-lg bg-[var(--accent)] flex items-center justify-center">
               <Zap className="w-5 h-5 text-white" />
             </div>
             <span className="text-2xl font-bold text-white">Helm</span>
-          </div>
+          </Link>
           <p className="text-[var(--text-muted)] text-sm">AI Operating System for Solo Founders</p>
         </div>
 
         {/* Card */}
-        <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-6 space-y-4">
+        <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl p-8 space-y-6 shadow-2xl">
           <h2 className="text-lg font-semibold text-white">{isSignUp ? 'Create your account' : 'Welcome back'}</h2>
 
           <form onSubmit={handleSubmit} className="space-y-3">
