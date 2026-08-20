@@ -79,10 +79,10 @@ export interface ExecutionResult {
 }
 
 export const MODEL_TIERS: Record<string, string> = {
-  ORCHESTRATOR: 'claude-2.1',
-  RESEARCH_DEEP: 'claude-2.1',
-  FINANCE: 'claude-2.1',
-  MARKETING: 'claude-instant-v1',
-  OPERATIONS: 'claude-instant-v1',
-  DEFAULT: 'claude-2.1',
+  ORCHESTRATOR: 'llama3-70b-8192',
+  RESEARCH_DEEP: 'llama3-70b-8192',
+  FINANCE: 'llama3-70b-8192',
+  MARKETING: 'llama3-70b-8192',
+  OPERATIONS: 'llama3-70b-8192',
+  DEFAULT: 'llama3-70b-8192',
 };

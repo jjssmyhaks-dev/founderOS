@@ -26,8 +26,12 @@ export const useActivityStore = create<ActivityState>((set) => ({
   isPolling: false,
   fetchActivities: async () => {
     try {
-      const res = await apiFetch('/agents/activity');
-      if (res.ok) set({ activities: await res.json() });
+      const res = await apiFetch('/activity?limit=30');
+      if (res.ok) {
+        const data = await res.json();
+        const items = Array.isArray(data) ? data : (data.items || []);
+        set({ activities: items });
+      }
     } catch { /* silent */ }
   },
   startPolling: () => {

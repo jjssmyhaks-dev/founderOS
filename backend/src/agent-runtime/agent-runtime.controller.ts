@@ -2,7 +2,9 @@ import { Controller, Post, Get, Param, Body, UseGuards, Request } from '@nestjs/
 
 import { AgentRuntimeService } from './agent-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
+@UseGuards(JwtAuthGuard)
 @Controller('agent-runtime')
 
 export class AgentRuntimeController {

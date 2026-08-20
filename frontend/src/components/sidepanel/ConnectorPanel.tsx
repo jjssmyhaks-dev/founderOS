@@ -4,7 +4,7 @@ import { useConnectorStore } from '@/stores/connectors.store';
 import { CONNECTOR_DEFS } from '@/config/connectors';
 import { LAYERS } from '@/config/agents';
 import { Wifi, WifiOff, Loader2, Link2Off, Plug } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { toast } from '../Toast';
 
 const STATUS_STYLES: Record<string, { dot: string; label: string }> = {
   CONNECTED: { dot: 'bg-green-400', label: 'Connected' },
@@ -63,10 +63,10 @@ export default function ConnectorPanel() {
                     onClick={async () => {
                       if (c.status === 'CONNECTED') {
                         await disconnect(c.connectorName);
-                        toast.success('Disconnected');
+                        toast('success', 'Disconnected');
                       } else {
                         await connect(c.connectorName);
-                        toast.success('Connecting...');
+                        toast('info', 'Connecting...');
                       }
                     }}
                     disabled={isConnecting}

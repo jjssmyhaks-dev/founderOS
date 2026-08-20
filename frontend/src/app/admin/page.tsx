@@ -7,7 +7,8 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 const adminFetch = (path: string, opts?: RequestInit) => {
-  return fetch(API + path, { ...opts, headers: { ...apiHeaders(), ...opts?.headers } });
+  const token = typeof window !== 'undefined' ? localStorage.getItem('helm_token') : null;
+  return fetch(API + path, { ...opts, headers: { ...apiHeaders(token), ...opts?.headers } });
 };
 
 type Tab = "overview" | "traces" | "cost" | "leaderboard" | "evals" | "memory";

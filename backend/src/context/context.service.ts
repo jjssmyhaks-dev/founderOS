@@ -49,15 +49,21 @@ export class ContextService {
   }
 
   async update(id: string, founderId: string, content: string) {
+    // Verify ownership first
+    const existing = await this.prisma.contextNote.findFirst({ where: { id, founderId } });
+    if (!existing) throw new Error('Context note not found');
     return this.prisma.contextNote.update({
-      where: { id, founderId },
+      where: { id },
       data: { content },
     });
   }
 
   async remove(id: string, founderId: string) {
+    // Verify ownership first
+    const existing = await this.prisma.contextNote.findFirst({ where: { id, founderId } });
+    if (!existing) throw new Error('Context note not found');
     return this.prisma.contextNote.delete({
-      where: { id, founderId },
+      where: { id },
     });
   }
 

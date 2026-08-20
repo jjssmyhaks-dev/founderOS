@@ -35,11 +35,14 @@ export class EvalService {
           systemPrompt: 'You are being evaluated. Respond accurately and concisely.',
           model: MODEL_TIERS.DEFAULT, maxSteps: 4, contextTokenBudget: 4000, toolIds: [],
         };
-        await this.prisma.task.create({ data: { id: taskId, agentId, founderId: 'system', layer: 'EVAL', title: 'Eval: ' + tc.name, description: 'Eval: ' + tc.name, goal: String(tc.input), triggerType: 'orchestrator_assigned', status: 'PENDING', riskTier: 'NOTIFY_AND_ACT', maxSteps: 4 } });
+        // Use the first available founder as eval task owner to satisfy FK constraint
+        const evalFounder = await this.prisma.founder.findFirst({ select: { id: true } });
+        const evalFounderId = evalFounder?.id || '00000000-0000-0000-0000-000000000000';
+        await this.prisma.task.create({ data: { id: taskId, agentId, founderId: evalFounderId, layer: 'EVAL', title: 'Eval: ' + tc.name, description: 'Eval: ' + tc.name, goal: String(tc.input), triggerType: 'orchestrator_assigned', status: 'PENDING', riskTier: 'NOTIFY_AND_ACT', maxSteps: 4 } });
 
         const result = await this.runtime.executeTask({
           taskId, agentId, triggerType: 'event_triggered', goal: String(tc.input),
-          contextRefs: [], riskTierHint: null, deadline: null, parentTaskId: null, founderId: 'system', layer: 'EVAL',
+          contextRefs: [], riskTierHint: null, deadline: null, parentTaskId: null, founderId: evalFounderId, layer: 'EVAL',
         }, config);
 
         const evalPassed = result.status === 'completed' && this.evaluateOutput(result.result || '', tc);

@@ -17,19 +17,16 @@ export interface LlmClassificationResult {
 }
 
 const MODEL_TIERS = {
-  FAST: 'qwen/qwen3.6-27b',
-  DEFAULT: 'qwen/qwen3.6-27b',
-  POWERFUL: 'groq/compound',
+  FAST: 'llama3-8b-8192',
+  DEFAULT: 'llama3-70b-8192',
+  POWERFUL: 'llama3-70b-8192',
 } as const;
 
 const GROQ_MODELS = [
-  'qwen/qwen3.6-27b',
-  'groq/compound',
-  'groq/compound-mini',
-  'openai/gpt-oss-120b',
-  'openai/gpt-oss-20b',
-  'allam-2-7b',
-  'canopylabs/orpheus-v1-english',
+  'llama3-70b-8192',
+  'llama3-8b-8192',
+  'mixtral-8x7b-32768',
+  'gemma-7b-it',
 ] as const;
 
 @Injectable()

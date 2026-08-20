@@ -79,9 +79,14 @@ export class ApprovalService {
           };
           const config = {
             agentId: agentTask.agentId,
-            tier: (task.riskTier || 'NOTIFY_AND_ACT') as any,
-            timeoutMs: 30000,
-          } as any;
+            name: agentTask.agentId,
+            layer: task.layer || 'RESEARCH',
+            systemPrompt: '',
+            model: 'llama3-70b-8192',
+            maxSteps: task.maxSteps || 8,
+            contextTokenBudget: 8000,
+            toolIds: [],
+          };
           await this.runtime.executeTask(agentTask, config);
           this.logger.log(`Executed approved task ${approval.taskId}`);
         }

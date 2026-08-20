@@ -1,8 +1,5 @@
-// @ts-nocheck
-// Type declarations for runtime-installed packages
-
 import { WebSocketGateway, WebSocketServer, OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
-import { Logger, OnModuleInit } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import Redis from 'ioredis';
@@ -10,7 +7,7 @@ import Redis from 'ioredis';
 @WebSocketGateway({ cors: { origin: process.env.FRONTEND_URL || 'http://localhost:3000' } })
 export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: Server;
+  server!: Server;
 
   private readonly logger = new Logger(EventsGateway.name);
   private readonly founderSockets = new Map<string, Set<string>>();
@@ -18,23 +15,22 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   constructor(private jwtService: JwtService) {}
 
-  async onModuleInit() {
-    // Subscribe to Redis event bus for real-time push to connected founders
+  afterInit(_server: Server) {
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
     try {
       this.redisSub = new Redis(redisUrl);
-      this.redisSub.subscribe('helm:events', (err) => {
+      this.redisSub.subscribe('helm:events:all', (err: Error | null) => {
         if (err) this.logger.warn('Redis subscribe failed: ' + String(err));
-        else this.logger.log('WebSocket gateway subscribed to helm:events');
+        else this.logger.log('WebSocket gateway subscribed to helm:events:all');
       });
-      this.redisSub.on('message', (_channel, message) => {
+      this.redisSub.on('message', (_channel: string, message: string) => {
         try {
           const event = JSON.parse(message);
           const founderId = event.payload?.founderId || event.correlationId;
           if (founderId) {
             this.sendToFounder(founderId, 'event:' + event.type, event.payload);
           }
-        } catch (e) {
+        } catch (_e) {
           // Ignore parse errors
         }
       });
@@ -46,29 +42,30 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   async handleConnection(client: Socket) {
     try {
-      const token = client.handshake.auth?.token || client.handshake.headers?.authorization?.replace('Bearer ', '');
+      const token = (client.handshake.auth as Record<string, string>)?.token ||
+        client.handshake.headers?.authorization?.replace('Bearer ', '');
       if (!token) { client.disconnect(); return; }
-      const payload = this.jwtService.verify(token);
-      const founderId = payload.sub || payload.founderId;
+      const payload = this.jwtService.verify(token) as Record<string, unknown>;
+      const founderId = (payload.sub || payload.founderId) as string;
       if (!founderId) { client.disconnect(); return; }
       client.data.founderId = founderId;
       if (!this.founderSockets.has(founderId)) this.founderSockets.set(founderId, new Set());
       this.founderSockets.get(founderId)!.add(client.id);
       this.logger.log('Socket connected for founder ' + founderId);
-    } catch (e) {
+    } catch (_e) {
       client.disconnect();
     }
   }
 
   handleDisconnect(client: Socket) {
-    const founderId = client.data?.founderId;
+    const founderId = client.data?.founderId as string | undefined;
     if (founderId && this.founderSockets.has(founderId)) {
       this.founderSockets.get(founderId)!.delete(client.id);
       if (this.founderSockets.get(founderId)!.size === 0) this.founderSockets.delete(founderId);
     }
   }
 
-  sendToFounder(founderId: string, event: string, data: any) {
+  sendToFounder(founderId: string, event: string, data: unknown) {
     const sockets = this.founderSockets.get(founderId);
     if (!sockets || sockets.size === 0) return;
     for (const sid of sockets) {

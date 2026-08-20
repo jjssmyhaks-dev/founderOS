@@ -21,7 +21,7 @@ export default function AuthGuard({ children }: Props) {
       router.replace('/login');
     } else if (stored && !token) {
       // Token exists but store not hydrated - verify it works
-      fetch(process.env.NEXT_PUBLIC_API_URL + '/auth/me', {
+      fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001') + '/auth/me', {
         headers: { Authorization: `Bearer ${stored}` },
       })
         .then((r) => {

@@ -19,6 +19,7 @@ model Founder {
   businessDescription String?
   timezone            String   @default("UTC")
   onboardingComplete  Boolean @default(false)
+  onboardingState     Json?
   autonomySettings    Json     @default("{\"research\":{\"defaultTier\":\"NOTIFY_AND_ACT\"},\"marketing\":{\"defaultTier\":\"NOTIFY_AND_ACT\"},\"operations\":{\"defaultTier\":\"NOTIFY_AND_ACT\"},\"finance\":{\"defaultTier\":\"APPROVAL_REQUIRED\"}}")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt

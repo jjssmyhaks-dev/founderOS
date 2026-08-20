@@ -5,7 +5,8 @@ import AuthGuard from '@/components/AuthGuard';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 const obsFetch = (path: string, opts?: RequestInit) => {
-  return fetch(API + path, { ...opts, headers: { ...apiHeaders(), ...opts?.headers } });
+  const token = typeof window !== 'undefined' ? localStorage.getItem('helm_token') : null;
+  return fetch(API + path, { ...opts, headers: { ...apiHeaders(token), ...opts?.headers } });
 };
 
 interface Span { id: string; spanType: string; status: string; agentId: string | null; inputSummary: string | null; outputSummary: string | null; error: string | null; tokensUsed: number | null; startedAt: string; endedAt: string | null; }

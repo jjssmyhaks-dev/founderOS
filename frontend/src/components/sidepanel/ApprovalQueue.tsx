@@ -4,7 +4,7 @@ import { useApprovalStore, type Approval } from '@/stores/approvals.store';
 import { AGENTS, getLayerConfig } from '@/config/agents';
 import { CheckCircle, XCircle, Edit3, Clock, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
-import toast from 'react-hot-toast';
+import { toast } from '../Toast';
 
 export default function ApprovalQueue() {
   const approvals = useApprovalStore((s) => s.approvals);
@@ -38,9 +38,9 @@ export default function ApprovalQueue() {
       </div>
       {approvals.map((approval) => (
         <ApprovalCard key={approval.id} approval={approval}
-          onApprove={() => { approve(approval.id); toast.success('Approved'); }}
-          onReject={() => { reject(approval.id); toast('Rejected', { icon: '🚫' }); }}
-          onEdit={(text) => { edit(approval.id, text); toast.success('Approved with edits'); }}
+          onApprove={() => { approve(approval.id); toast('success', 'Approved'); }}
+          onReject={() => { reject(approval.id); toast('info', 'Rejected'); }}
+          onEdit={(text) => { edit(approval.id, text); toast('success', 'Approved with edits'); }}
         />
       ))}
     </div>

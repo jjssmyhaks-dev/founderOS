@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MemoryService } from '../memory/memory.service';
 import { LlmService } from '../llm/llm.service';
+import { OrchestrationService } from '../orchestration/orchestration.service';
 
 export interface OnboardingState {
   founderId: string;
@@ -35,15 +36,51 @@ Rules:
 IMPORTANT: After enough context or 5 questions, propose a specific action. Frame it as: "Here is something I can do right now for you..." and wait for their go-ahead.`;
 
 @Injectable()
-export class OnboardingService {
+export class OnboardingService implements OnModuleInit {
   private readonly logger = new Logger(OnboardingService.name);
   private readonly states = new Map<string, OnboardingState>();
+  private orchestrator: OrchestrationService | null = null;
 
   constructor(
     private prisma: PrismaService,
     private memory: MemoryService,
     private llm: LlmService,
-  ) {}
+    private readonly orchestration: OrchestrationService,
+  ) {
+    this.orchestrator = orchestration;
+  }
+
+  onModuleInit() {
+    // Orchestrator is injected via constructor - no additional wiring needed
+  }
+
+  private async loadState(founderId: string): Promise<OnboardingState> {
+    if (this.states.has(founderId)) return this.states.get(founderId)!;
+    const founder = await this.prisma.founder.findUnique({ where: { id: founderId }, select: { onboardingState: true, onboardingComplete: true } });
+    if (founder?.onboardingState && typeof founder.onboardingState === 'object') {
+      const saved = founder.onboardingState as Record<string, any>;
+      const state: OnboardingState = {
+        founderId,
+        isOnboarding: !founder.onboardingComplete,
+        questionCount: saved.questionCount || 0,
+        maxQuestions: MAX_ONBOARDING_QUESTIONS,
+        capturedTopics: saved.capturedTopics || [],
+        firstActionProposed: saved.firstActionProposed || false,
+        firstActionCompleted: saved.firstActionCompleted || false,
+      };
+      this.states.set(founderId, state);
+      return state;
+    }
+    return this.getOnboardingState(founderId);
+  }
+
+  private async persistState(founderId: string, state: OnboardingState): Promise<void> {
+    this.states.set(founderId, state);
+    await this.prisma.founder.update({
+      where: { id: founderId },
+      data: { onboardingState: { questionCount: state.questionCount, capturedTopics: state.capturedTopics, firstActionProposed: state.firstActionProposed, firstActionCompleted: state.firstActionCompleted } },
+    }).catch((e) => this.logger.warn('Failed to persist onboarding state: ' + String(e)));
+  }
 
   async getFounderInfo(founderId: string) {
     const founder = await this.prisma.founder.findUnique({
@@ -84,17 +121,15 @@ export class OnboardingService {
   }
 
   async handleOnboardingMessage(founderId: string, message: string): Promise<{ response: string; isOnboarding: boolean }> {
-    const state = await this.getOnboardingState(founderId);
+    const state = await this.loadState(founderId);
 
     // Question 1: first response
     if (state.questionCount === 0) {
       state.questionCount = 1;
-      this.states.set(founderId, state);
+      await this.persistState(founderId, state);
 
       const response = await this.llm.complete({
-        prompt: `${message}
-
-Respond naturally as if this is the start of a conversation. Ask ONE follow-up question about their business.`,
+        prompt: `${message}\n\nRespond naturally as if this is the start of a conversation. Ask ONE follow-up question about their business.`,
         system: ONBOARDING_SYSTEM_PROMPT,
         maxTokens: 512,
       });
@@ -106,7 +141,7 @@ Respond naturally as if this is the start of a conversation. Ask ONE follow-up q
     // Max questions reached -> propose first action
     if (state.questionCount >= state.maxQuestions && !state.firstActionProposed) {
       state.firstActionProposed = true;
-      this.states.set(founderId, state);
+      await this.persistState(founderId, state);
       await this.extractAndSaveContext(founderId, message);
       const action = await this.proposeFirstAction(founderId);
       return { response: action, isOnboarding: true };
@@ -120,7 +155,7 @@ Respond naturally as if this is the start of a conversation. Ask ONE follow-up q
       if (isAffirmative) {
         state.firstActionCompleted = true;
         state.isOnboarding = false;
-        this.states.set(founderId, state);
+        await this.persistState(founderId, state);
 
         // Persist to DB
         await this.prisma.founder.update({
@@ -128,8 +163,21 @@ Respond naturally as if this is the start of a conversation. Ask ONE follow-up q
           data: { onboardingComplete: true },
         });
 
+        // Actually execute the first action by routing through the orchestrator
+        let actionResponse = 'Great, I\'m on it. While that runs, feel free to ask me anything or give me tasks. I\'ll keep learning about your business as we work together.';
+        if (this.orchestrator) {
+          try {
+            const lastContext = state.capturedTopics[state.capturedTopics.length - 1] || '';
+            const actionGoal = lastContext ? `Based on what you know about this founder: ${lastContext}. Take one small concrete action.` : 'Analyze the founder\'s business context and suggest one immediate win.';
+            const result = await this.orchestrator.routeMessage(founderId, actionGoal);
+            if (result?.content) actionResponse = 'Got it! ' + result.content + '\n\nWhile that runs, feel free to ask me anything or give me tasks. I\'ll keep learning about your business as we work together.';
+          } catch (e) {
+            this.logger.warn('First action dispatch failed: ' + String(e));
+          }
+        }
+
         return {
-          response: 'Great, I\'m on it. While that runs, feel free to ask me anything or give me tasks. I\'ll keep learning about your business as we work together.',
+          response: actionResponse,
           isOnboarding: false,
         };
       }
@@ -139,7 +187,7 @@ Respond naturally as if this is the start of a conversation. Ask ONE follow-up q
         // They declined - mark onboarding done anyway, they can come back
         state.firstActionCompleted = true;
         state.isOnboarding = false;
-        this.states.set(founderId, state);
+        await this.persistState(founderId, state);
         await this.prisma.founder.update({
           where: { id: founderId },
           data: { onboardingComplete: true },
@@ -152,9 +200,7 @@ Respond naturally as if this is the start of a conversation. Ask ONE follow-up q
 
       // Off-topic or question about the proposal
       const response = await this.llm.complete({
-        prompt: `${message}
-
-The founder responded to your action proposal but didn\'t clearly say yes or no. Address their question, then ask again if they want you to go ahead. Keep it brief.`,
+        prompt: `${message}\n\nThe founder responded to your action proposal but didn't clearly say yes or no. Address their question, then ask again if they want you to go ahead. Keep it brief.`,
         system: ONBOARDING_SYSTEM_PROMPT,
         maxTokens: 512,
       });
@@ -164,16 +210,14 @@ The founder responded to your action proposal but didn\'t clearly say yes or no.
     // Normal follow-up questions
     const remaining = state.maxQuestions - state.questionCount;
     const response = await this.llm.complete({
-      prompt: `${message}
-
-Ask ONE follow-up question. You have asked ${state.questionCount - 1} questions so far and have ${remaining} more available. Make it count.`,
+      prompt: `${message}\n\nAsk ONE follow-up question. You have asked ${state.questionCount - 1} questions so far and have ${remaining} more available. Make it count.`,
       system: ONBOARDING_SYSTEM_PROMPT,
       maxTokens: 512,
     });
 
     if (message.length > 10) {
       state.capturedTopics.push(message.substring(0, 100));
-      this.states.set(founderId, state);
+      await this.persistState(founderId, state);
     }
 
     return { response, isOnboarding: true };
@@ -184,7 +228,7 @@ Ask ONE follow-up question. You have asked ${state.questionCount - 1} questions 
     const prompt = `The founder named ${founderName} just signed up. Their business is called ${biz}. Send a short, direct opening message. Introduce yourself, state what you do in one sentence, and ask what the business does and what takes the most time right now. Be conversational, not corporate.`;
 
     const response = await this.llm.complete({ prompt, system: ONBOARDING_SYSTEM_PROMPT, maxTokens: 512 });
-    await this.getOnboardingState(founderId);
+    await this.loadState(founderId);
 
     if (businessName) {
       await this.memory.writeMemory({
@@ -199,11 +243,11 @@ Ask ONE follow-up question. You have asked ${state.questionCount - 1} questions 
   }
 
   async markOnboardingComplete(founderId: string) {
-    const state = this.states.get(founderId);
+    const state = await this.loadState(founderId);
     if (state) {
       state.isOnboarding = false;
       state.firstActionCompleted = true;
-      this.states.set(founderId, state);
+      await this.persistState(founderId, state);
     }
     // Always persist to DB
     await this.prisma.founder.update({

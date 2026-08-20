@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Param, Query, Body, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/jwt-auth.decorator';
 import { TraceService } from './trace.service';
 import { EvalService } from './eval.service';
 import { SpanEmitterService } from './span-emitter.service';
@@ -16,7 +17,7 @@ export class ObservabilityController {
   ) {}
 
   @Get('traces')
-  async queryTraces(@Query('founderId') founderId?: string, @Query('agentId') agentId?: string, @Query('status') status?: string, @Query('from') from?: string, @Query('to') to?: string, @Query('limit') limit?: string) {
+  async queryTraces(@CurrentUser('id') founderId: string, @Query('agentId') agentId?: string, @Query('status') status?: string, @Query('from') from?: string, @Query('to') to?: string, @Query('limit') limit?: string) {
     return this.trace.queryTraces({ founderId, agentId, status, from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined, limit: limit ? parseInt(limit) : undefined });
   }
 
@@ -77,9 +78,9 @@ export class ObservabilityController {
   }
 
   @Get('leaderboard')
-  async leaderboard() {
+  async leaderboard(@CurrentUser('id') founderId: string) {
     const since = new Date(Date.now() - 7 * 86400000);
-    const spans = await this.prisma.span.findMany({ where: { startedAt: { gte: since } } });
+    const spans = await this.prisma.span.findMany({ where: { startedAt: { gte: since }, trace: { founderId } } });
     const agents: Record<string, { total: number; success: number; failed: number; cost: number; avgSteps: number; escalations: number }> = {};
     for (const s of spans) {
       const id = s.agentId || 'unknown';

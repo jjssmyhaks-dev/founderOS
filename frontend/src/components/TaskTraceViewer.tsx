@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface TaskStep {
   step: number;
@@ -50,12 +50,12 @@ export default function TaskTraceViewer({ taskId, onClose }: { taskId: string; o
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-  useState(() => {
+  useEffect(() => {
     fetch(API_BASE + '/agent-runtime/tasks/' + taskId + '/trace')
       .then(r => r.json())
       .then(data => { setTrace(data); setLoading(false); })
       .catch(() => setLoading(false));
-  });
+  }, [taskId, API_BASE]);
 
   if (loading) {
     return (

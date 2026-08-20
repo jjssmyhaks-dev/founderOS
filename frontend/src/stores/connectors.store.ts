@@ -26,7 +26,23 @@ export const useConnectorStore = create<ConnectorState>((set) => ({
   fetchConnectors: async () => {
     try {
       const res = await apiFetch('/connectors');
-      if (res.ok) set({ connectors: await res.json() });
+      if (res.ok) {
+        const data = await res.json();
+        // Backend returns {items: [...], total, limit, offset} for registry
+        const list = Array.isArray(data) ? data : (data.items || data);
+        // The registry endpoint returns definitions with a `connection` field
+        const connectors = (Array.isArray(list) ? list : []).map((c: any) => ({
+          id: c.connection?.id || c.id || c.name,
+          connectorName: c.name,
+          displayName: c.displayName || c.name,
+          icon: c.icon || '🔌',
+          status: c.connection?.status || 'DISCONNECTED',
+          layer: c.layer || 'CROSS_LAYER',
+          description: c.description || '',
+          lastHealthCheck: c.connection?.lastHealthCheck,
+        }));
+        set({ connectors });
+      }
     } catch { /* silent */ }
   },
   connect: async (name) => {
