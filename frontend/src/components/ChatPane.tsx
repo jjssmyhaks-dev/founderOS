@@ -1,16 +1,54 @@
 "use client";
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { useChatStore, ChatMsg } from '@/stores/chat.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { toast } from './Toast';
-import { Send, Bot, User, Loader2, Sparkles } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, Mic, MicOff } from 'lucide-react';
+
+// Web Speech API types
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList;
+  resultIndex: number;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  error: string;
+  message: string;
+}
+
+// Minimal SpeechRecognition interface for type safety
+type SpeechRecognitionInstance = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+
+declare global {
+  interface Window {
+    SpeechRecognition?: new () => SpeechRecognitionInstance;
+    webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
+  }
+}
+
+
 
 export default function ChatPane() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { messages, isLoading, isOnboarding, sendMessage } = useChatStore();
   const user = useAuthStore((s) => s.user);
+  
+  // Voice input state
+  const [isListening, setIsListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -19,6 +57,65 @@ export default function ChatPane() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Check for Web Speech API support
+  useEffect(() => {
+    const SpeechRecognitionConstructor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognitionConstructor) {
+      setVoiceSupported(true);
+      const recognition = new SpeechRecognitionConstructor();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (inputRef.current) {
+          inputRef.current.value = transcript;
+        }
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        if (event.error !== 'no-speech') {
+          toast('error', 'Voice input failed: ' + event.error);
+        }
+      };
+
+      recognitionRef.current = recognition;
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    };
+  }, []);
+
+  const toggleVoiceInput = useCallback(() => {
+    if (!recognitionRef.current) return;
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (err) {
+        console.error('Failed to start speech recognition:', err);
+        toast('error', 'Could not start voice input');
+      }
+    }
+  }, [isListening]);
 
   const handleSend = async () => {
     const input = inputRef.current;
@@ -115,10 +212,32 @@ export default function ChatPane() {
       {/* Input */}
       <div className="px-4 pb-4 pt-2">
         <div className="flex gap-2 items-end bg-[var(--bg-secondary)] border border-[var(--border)] rounded-2xl px-4 py-2">
+          {/* Voice input button */}
+          {voiceSupported && (
+            <button
+              onClick={toggleVoiceInput}
+              disabled={isLoading}
+              className={`p-2 rounded-lg transition-all ${
+                isListening
+                  ? 'bg-red-500/20 text-red-400 animate-pulse'
+                  : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              } disabled:opacity-40`}
+              title={isListening ? 'Stop listening' : 'Voice input'}
+            >
+              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+          )}
+
           <input
             ref={inputRef}
             type="text"
-            placeholder={isOnboarding ? 'Tell Helm about your business...' : 'Ask Helm anything...'}
+            placeholder={
+              isListening
+                ? 'Listening...'
+                : isOnboarding
+                  ? 'Tell Helm about your business...'
+                  : 'Ask Helm anything...'
+            }
             className="flex-1 bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none py-1"
             disabled={isLoading}
             onKeyDown={handleKeyDown}

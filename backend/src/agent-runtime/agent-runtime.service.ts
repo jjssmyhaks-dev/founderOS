@@ -9,6 +9,7 @@ import { ContextAssemblerService } from './context-assembler.service';
 import { RiskGateService } from './risk-gate.service';
 import { McpConnectorExecutor } from './mcp-connector-executor.service';
 import { SpanEmitterService } from '../observability/span-emitter.service';
+import { getConnectorConfig } from '../connectors/connector-config';
 import { AgentTask, AgentConfig, ExecutionResult, StepType, ToolCall, ToolResult, MODEL_TIERS } from './types';
 
 @Injectable()
@@ -232,8 +233,54 @@ export class AgentRuntimeService {
       if (hid === 'activity') return { escalated: true };
       return { error: 'Unknown handler: ' + hid };
     }
-    this.logger.warn('MCP ' + tool.handler + ' not yet implemented');
-    return { note: 'MCP connector ' + tool.handler + ' not yet implemented' };
+    // MCP connector execution
+    if (ht === 'mcp') {
+      const connectorId = hid;
+      const config = getConnectorConfig(connectorId);
+      if (!config) {
+        return { error: 'Unknown connector: ' + connectorId };
+      }
+      // Look up stored credentials for this founder
+      const connInstance = await this.prisma.connector.findFirst({
+        where: { connectorName: connectorId, founderId: task.founderId },
+      });
+      if (!connInstance || connInstance.status !== 'CONNECTED') {
+        return { error: 'Connector ' + connectorId + ' is not connected. Please configure it in Settings.' };
+      }
+      // Build auth header from stored credentials
+      const authMetadata = (connInstance.authMetadata as Record<string, any>) || {};
+      const authHeader = this.buildAuthHeader(config.authType, authMetadata);
+      // Register with MCP executor and execute
+      this.mcpExecutor.registerConnector(connectorId, {
+        baseUrl: config.baseUrl,
+        authHeader,
+        timeoutMs: 30000,
+      });
+      const result = await this.mcpExecutor.execute(tool.handler, call);
+      if (!result.success) {
+        this.logger.warn('MCP tool ' + tool.handler + ' failed: ' + result.error);
+      }
+      return result.output || { error: result.error };
+    }
+    this.logger.warn('Unknown handler type: ' + ht + ' for tool ' + tool.name);
+    return { error: 'Unknown handler type: ' + ht };
+  }
+
+  private buildAuthHeader(authType: string, metadata: Record<string, any>): string {
+    switch (authType) {
+      case 'BEARER':
+        return 'Bearer ' + (metadata.accessToken || metadata.token || '');
+      case 'BASIC':
+        const key = metadata.apiKey || metadata.key || '';
+        const secret = metadata.apiSecret || metadata.secret || '';
+        return 'Basic ' + Buffer.from(key + ':' + secret).toString('base64');
+      case 'API_KEY':
+        return 'X-API-Key ' + (metadata.apiKey || metadata.key || '');
+      case 'OAUTH':
+        return 'Bearer ' + (metadata.accessToken || '');
+      default:
+        return '';
+    }
   }
 
   private async flagConnectorUnhealthy(handler: string, agentId: string, error: string): Promise<void> {
