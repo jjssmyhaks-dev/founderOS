@@ -25,6 +25,7 @@ import { GatewayModule } from './gateway/gateway.module';
 import { SupabaseModule } from './supabase/supabase.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { CommonModule } from './common/common.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { CommonModule } from './common/common.module';
     SupabaseModule,
     OnboardingModule,
     CommonModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

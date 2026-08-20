@@ -6,7 +6,8 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -14,7 +15,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
+    const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
+
+    // Generate or extract request ID
+    const requestId = (request as any).requestId || randomUUID();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal server error';
@@ -36,16 +41,38 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       error = 'INTERNAL_ERROR';
     }
 
+    // Structured logging
+    const logContext = {
+      requestId,
+      method: request.method,
+      path: request.path,
+      ip: request.ip || request.socket.remoteAddress,
+      userAgent: request.headers['user-agent'],
+      status,
+      error,
+    };
+
     if (status >= 500) {
-      this.logger.error(`${status} ${error}: ${message}`, exception instanceof Error ? exception.stack : undefined);
-    } else {
-      this.logger.warn(`${status} ${error}: ${message}`);
+      this.logger.error(
+        `[${requestId}] ${request.method} ${request.path} → ${status} ${error}: ${message}`,
+        exception instanceof Error ? exception.stack : undefined,
+      );
+    } else if (status >= 400) {
+      this.logger.warn(
+        `[${requestId}] ${request.method} ${request.path} → ${status} ${error}: ${message}`,
+      );
     }
+
+    // Never expose internal error details in production
+    const safeMessage = status >= 500 && process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
+      : message;
 
     response.status(status).json({
       statusCode: status,
       error,
-      message,
+      message: safeMessage,
+      requestId,
       timestamp: new Date().toISOString(),
     });
   }

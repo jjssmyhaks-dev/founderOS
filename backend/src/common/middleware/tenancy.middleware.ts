@@ -1,4 +1,4 @@
-import { Injectable, NestMiddleware, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -33,10 +33,19 @@ export class TenancyMiddleware implements NestMiddleware {
       return next();
     }
 
-    // Set the Postgres session variable for RLS
+    // Sanitize founderId to prevent SQL injection (should be UUID format)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(founderId)) {
+      this.logger.warn(`Invalid founderId format: ${founderId}`);
+      return next();
+    }
+
+    // Set the Postgres session variable for RLS using parameterized approach
+    // Note: SET LOCAL doesn't support parameters, so we validate the UUID format first
     try {
       await this.prisma.$executeRawUnsafe(
-        `SET LOCAL app.current_founder_id = '${founderId}'`,
+        `SET LOCAL app.current_founder_id = $1`,
+        founderId,
       );
     } catch (e) {
       this.logger.error('Failed to set RLS session variable: ' + String(e));
