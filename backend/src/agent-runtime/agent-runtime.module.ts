@@ -16,9 +16,15 @@ import { HandoffService } from './handoff.service';
 import { CrashRecoveryService } from './crash-recovery.service';
 import { ScheduledTriggerService } from './scheduled-trigger.service';
 import { AgentRuntimeController } from './agent-runtime.controller';
+import { GuardrailsModule } from '../guardrails/guardrails.module';
+import { SelfImprovementService } from './self-improvement.service';
+import { AgenticHarnessService } from './agentic-harness.service';
 
 @Module({
-  imports: [PrismaModule, MemoryModule, LlmModule, EventModule, ActivityModule, ObservabilityModule, ContextModule],
+  imports: [
+    PrismaModule, MemoryModule, LlmModule, EventModule,
+    ActivityModule, ObservabilityModule, ContextModule, GuardrailsModule,
+  ],
   providers: [
     AgentRuntimeService,
     ToolRegistryService,
@@ -29,8 +35,13 @@ import { AgentRuntimeController } from './agent-runtime.controller';
     HandoffService,
     CrashRecoveryService,
     ScheduledTriggerService,
+    SelfImprovementService,
+    AgenticHarnessService,
   ],
-  exports: [AgentRuntimeService, ToolRegistryService, McpConnectorExecutor, ScheduledTriggerService],
+  exports: [
+    AgentRuntimeService, ToolRegistryService, McpConnectorExecutor,
+    ScheduledTriggerService, SelfImprovementService, AgenticHarnessService,
+  ],
   controllers: [AgentRuntimeController],
 })
 export class AgentRuntimeModule {}

@@ -384,3 +384,101 @@ model ConversationHistory {
   @@index([sessionId])
   @@index([createdAt])
 }
+
+// ── Guardrails & Security ──────────────────────────────────────────────
+
+model GuardrailAudit {
+  id              String   @id @default(uuid()) @db.Uuid
+  founderId       String   @db.Uuid
+  agentId         String
+  taskId          String?
+  auditType       String   // INPUT_BLOCKED, OUTPUT_BLOCKED, BUDGET_EXCEEDED, PROMPT_INJECTION, PII_DETECTED, RATE_LIMITED
+  severity        String   @default("WARNING") // INFO, WARNING, CRITICAL, BLOCKED
+  details         Json?
+  input           String?
+  output          String?
+  action          String   @default("logged") // logged, blocked, sanitized, escalated
+  createdAt       DateTime @default(now())
+
+  @@index([founderId])
+  @@index([agentId])
+  @@index([auditType])
+  @@index([createdAt])
+}
+
+model AgentBudget {
+  id              String   @id @default(uuid()) @db.Uuid
+  founderId       String   @db.Uuid
+  agentId         String
+  period          String   @default("daily") // daily, weekly, monthly
+  tokenLimit      Int      @default(100000)
+  tokensUsed      Int      @default(0)
+  taskLimit       Int      @default(50)
+  tasksCompleted  Int      @default(0)
+  costLimitCents  Int      @default(500) // $5 default
+  costCentsUsed   Int      @default(0)
+  periodStart     DateTime @default(now())
+  periodEnd       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([founderId, agentId, period])
+  @@index([founderId])
+}
+
+// ── Self-Improvement ───────────────────────────────────────────────────
+
+model AgentPerformance {
+  id              String   @id @default(uuid()) @db.Uuid
+  agentId         String
+  period          String   @default("7d") // 1d, 7d, 30d
+  totalTasks      Int      @default(0)
+  completedTasks  Int      @default(0)
+  failedTasks     Int      @default(0)
+  avgDurationMs   Float    @default(0)
+  avgSteps        Float    @default(0)
+  avgTokensPerTask Float   @default(0)
+  avgCostCents    Float    @default(0)
+  toolUsageStats  Json?    // {toolName: {count, successes, avgDuration}}
+  errorPatterns   Json?    // [{error, count, lastSeen}]
+  improvementNotes String? // Auto-generated improvement suggestions
+  measuredAt      DateTime @default(now())
+
+  @@unique([agentId, period, measuredAt])
+  @@index([agentId])
+  @@index([measuredAt])
+}
+
+model AgentState {
+  id              String   @id @default(uuid()) @db.Uuid
+  agentId         String
+  founderId       String   @db.Uuid
+  taskId          String?
+  stateType       String   @default("working") // working, idle, learning, consolidating
+  workingMemory   Json?    // Current task context, recent decisions
+  learningQueue   Json?    // Pending lessons from recent task outcomes
+  lastActiveAt    DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([agentId, founderId])
+  @@index([agentId])
+  @@index([founderId])
+}
+
+model MemoryConsolidation {
+  id              String   @id @default(uuid()) @db.Uuid
+  founderId       String   @db.Uuid
+  agentId         String
+  triggerType     String   // scheduled, threshold, manual
+  memoriesBefore  Int      @default(0)
+  memoriesAfter   Int      @default(0)
+  merged          Int      @default(0)
+  archived        Int      @default(0)
+  consolidated    Json?    // Summary of what was consolidated
+  durationMs      Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@index([founderId])
+  @@index([createdAt])
+}
