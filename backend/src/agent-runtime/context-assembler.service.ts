@@ -18,7 +18,6 @@ export class ContextAssemblerService {
     const parts: Array<{ content: string; priority: number }> = [];
 
     // Priority 0: system prompt (always included)
-    // Agent-specific or generic system prompt (priority 0, always included)
     const agentPrompt = getAgentPrompt(task.agentId) || config.systemPrompt || 'You are a helpful business assistant.';
     if (agentPrompt) {
       parts.push({ content: agentPrompt, priority: 0 });
@@ -43,14 +42,32 @@ export class ContextAssemblerService {
       parts.push({ content: '--- MEMORY ---' + String.fromCharCode(10) + memText, priority: 2 });
     }
 
-    // Priority 3: recent activity
+    // Priority 3: conversation history (last 10 exchanges with this agent)
+    try {
+      const history = await this.prisma.conversationHistory.findMany({
+        where: { founderId: task.founderId, agentId: task.agentId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      });
+      if (history.length > 0) {
+        const historyText = history.reverse().map(h => {
+          return '[' + h.role + ']: ' + h.content.substring(0, 300);
+        }).join(String.fromCharCode(10));
+        parts.push({ content: '--- RECENT CONVERSATION ---' + String.fromCharCode(10) + historyText, priority: 3 });
+      }
+    } catch (e) {
+      // ConversationHistory table might not exist yet — skip gracefully
+      this.logger.verbose('Conversation history not available: ' + String(e));
+    }
+
+    // Priority 4: recent activity
     const recent = await this.prisma.activityLog.findMany({
       where: { agentId: task.agentId },
       orderBy: { timestamp: 'desc' },
       take: 5,
     });
     if (recent.length > 0) {
-      parts.push({ content: '--- RECENT ACTIVITY ---' + String.fromCharCode(10) + recent.map(e => '[' + e.type + '] ' + e.description).join(String.fromCharCode(10)), priority: 3 });
+      parts.push({ content: '--- RECENT ACTIVITY ---' + String.fromCharCode(10) + recent.map(e => '[' + e.type + '] ' + e.description).join(String.fromCharCode(10)), priority: 4 });
     }
 
     // Enforce token budget

@@ -88,6 +88,18 @@ export class ChatService {
         },
       });
 
+      // Persist conversation history for agent multi-turn memory
+      try {
+        await this.prisma.conversationHistory.create({
+          data: { founderId, agentId: response.agentId, role: 'user', content, sessionId: session.id },
+        });
+        await this.prisma.conversationHistory.create({
+          data: { founderId, agentId: response.agentId, role: 'assistant', content: response.content, sessionId: session.id },
+        });
+      } catch (e) {
+        this.logger.verbose('Conversation history save skipped: ' + String(e));
+      }
+
       return {
         sessionId: session.id,
         message: { id: uuid(), role: 'FOUNDER', content, sessionId: session.id },

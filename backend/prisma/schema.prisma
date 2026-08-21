@@ -348,3 +348,39 @@ model EvalTestCase {
   @@unique([agentId, name])
   @@index([agentId])
 }
+
+model ScheduledAction {
+  id              String    @id @default(uuid()) @db.Uuid
+  founderId       String    @db.Uuid
+  agentId         String
+  layer           String
+  goal            String
+  cronExpression  String?
+  runAt           DateTime?
+  recurring       Boolean   @default(false)
+  status          String    @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED, CANCELLED
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([founderId])
+  @@index([status])
+  @@index([nextRunAt])
+}
+
+model ConversationHistory {
+  id              String   @id @default(uuid()) @db.Uuid
+  founderId       String   @db.Uuid
+  agentId         String
+  role            String   // user, assistant, system
+  content         String
+  sessionId       String?
+  taskId          String?
+  traceId         String?
+  createdAt       DateTime @default(now())
+
+  @@index([founderId, agentId])
+  @@index([sessionId])
+  @@index([createdAt])
+}

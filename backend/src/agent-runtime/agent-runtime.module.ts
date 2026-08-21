@@ -5,6 +5,7 @@ import { LlmModule } from '../llm/llm.module';
 import { EventModule } from '../events/events.module';
 import { ActivityModule } from '../activity/activity.module';
 import { ObservabilityModule } from '../observability/observability.module';
+import { ContextModule } from '../context/context.module';
 import { AgentRuntimeService } from './agent-runtime.service';
 import { ToolRegistryService } from './tool-registry.service';
 import { ContextAssemblerService } from './context-assembler.service';
@@ -17,7 +18,7 @@ import { ScheduledTriggerService } from './scheduled-trigger.service';
 import { AgentRuntimeController } from './agent-runtime.controller';
 
 @Module({
-  imports: [PrismaModule, MemoryModule, LlmModule, EventModule, ActivityModule, ObservabilityModule],
+  imports: [PrismaModule, MemoryModule, LlmModule, EventModule, ActivityModule, ObservabilityModule, ContextModule],
   providers: [
     AgentRuntimeService,
     ToolRegistryService,

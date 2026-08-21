@@ -1,10 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { LlmService } from '../llm/llm.service';
-import { TraceService } from '../observability/trace.service';
 import { EventService } from '../events/events.service';
 import { TaskService } from '../tasks/tasks.service';
 import { ContextService } from '../context/context.service';
 import { ActivityService } from '../activity/activity.service';
+import { MemoryService } from '../memory/memory.service';
 import { ResearchLayerService } from '../layers/research/research-layer.service';
 import { MarketingLayerService } from '../layers/marketing/marketing-layer.service';
 import { OperationsLayerService } from '../layers/operations/operations-layer.service';
@@ -14,18 +14,28 @@ const ROUTING_PROMPT = `You are the Global Orchestrator for Helm, an AI operatin
 
 Given a founder's message, classify which functional layer should handle it and select the best sub-agent.
 
-Layers: RESEARCH, MARKETING, OPERATIONS, FINANCE
+Layers and their agents:
+RESEARCH: competitor-intelligence, market-trend-scanning, pricing-benchmarking, customer-audience-research, campaign-deep-dive
+MARKETING: digital-marketing-strategist, performance-marketer, content-copywriter, seo-specialist, designer, social-community
+OPERATIONS: process-workflow, vendor-supply-chain, quality-fulfillment, customer-support, scheduling-capacity
+FINANCE: bookkeeping, cashflow-forecasting, pricing-unit-economics, compliance-tax, fundraising-investor-relations
 
 Respond in JSON format ONLY:
 {
   "layer": "LAYER_NAME",
-  "agentId": "agent-id-or-null",
+  "agentId": "specific-agent-id-or-null",
   "confidence": 0.0-1.0,
-  "reasoning": "brief explanation"
+  "reasoning": "brief explanation",
+  "isMultiStep": false,
+  "subTasks": []
 }
 
+If the message spans multiple layers, set isMultiStep to true and list subTasks:
+"subTasks": [{"layer": "LAYER", "agentId": "agent-id", "goal": "specific subtask"}]
+
 If the message is a greeting, question about Helm, or doesn't clearly map to a layer, use RESEARCH as default.
-If the message spans multiple layers, pick the primary one and note others in reasoning.`;
+If the message is complex and can be handled by one agent, just set the primary layer and agent.
+Only use isMultiStep when the request genuinely requires work from multiple layers.`;
 
 @Injectable()
 export class OrchestrationService {
@@ -37,6 +47,7 @@ export class OrchestrationService {
     private tasks: TaskService,
     private context: ContextService,
     private activity: ActivityService,
+    private memory: MemoryService,
     private research: ResearchLayerService,
     private marketing: MarketingLayerService,
     private operations: OperationsLayerService,
@@ -55,12 +66,16 @@ export class OrchestrationService {
     const context = await this.context.queryContext(founderId, message);
     const contextStr = context.length > 0 ? `\nRelevant prior context:\n${context.map(c => c.content).join('\n')}` : '';
 
+    // Check memory for relevant constraints and preferences
+    const memories = await this.memory.retrieveMemory({ founderId, query: message, maxResults: 3 });
+    const memoryStr = memories.length > 0 ? `\nFounder context:\n${memories.map(m => '[' + (m as any).memoryType + '] ' + (m as any).content).join('\n')}` : '';
+
     // Use LLM for routing
     let routing;
     try {
       const llmResponse = await this.llm.complete({
-        prompt: `${ROUTING_PROMPT}${contextStr}\n\nFounder message: "${message}"`,
-        system: 'You are a routing classifier. Respond with valid JSON only.',
+        prompt: `${ROUTING_PROMPT}${contextStr}${memoryStr}\n\nFounder message: "${message}"`,
+        system: 'You are a routing classifier. Respond with valid JSON only. No markdown, no explanation outside the JSON.',
       });
 
       const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
@@ -70,6 +85,11 @@ export class OrchestrationService {
     }
 
     this.logger.log(`Routed to ${routing.layer} (${routing.confidence} confidence): ${routing.reasoning}`);
+
+    // Handle multi-step routing
+    if (routing.isMultiStep && routing.subTasks?.length > 0) {
+      return this.handleMultiStep(founderId, message, routing);
+    }
 
     // Route to the appropriate layer
     const layerServices: Record<string, any> = {
@@ -83,8 +103,9 @@ export class OrchestrationService {
     const result = await layerService.handleMessage(founderId, message, routing);
 
     // Log the orchestration activity
-    await this.activity.logActivity({ founderId, type: 'AGENT_STATUS_CHANGE',
-      description: `Message routed to ${routing.layer} layer${routing.agentId ? ` (${routing.agentId})` : ''}: ${routing.reasoning}`
+    await this.activity.logActivity({
+      founderId, type: 'AGENT_STATUS_CHANGE',
+      description: `Message routed to ${routing.layer} layer${routing.agentId ? ` (${routing.agentId})` : ''}: ${routing.reasoning}`,
     });
 
     return {
@@ -92,6 +113,44 @@ export class OrchestrationService {
       agentId: routing.agentId || `${routing.layer.toLowerCase()}-orchestrator`,
       layer: routing.layer,
       metadata: { confidence: routing.confidence, reasoning: routing.reasoning, contextUsed: context.length },
+    };
+  }
+
+  private async handleMultiStep(founderId: string, message: string, routing: any): Promise<{
+    content: string;
+    agentId: string;
+    layer: string;
+    metadata: any;
+  }> {
+    const subTasks = routing.subTasks as Array<{ layer: string; agentId: string; goal: string }>;
+    const results: string[] = [];
+
+    for (const sub of subTasks) {
+      const layerServices: Record<string, any> = {
+        RESEARCH: this.research,
+        MARKETING: this.marketing,
+        OPERATIONS: this.operations,
+        FINANCE: this.finance,
+      };
+      const layerService = layerServices[sub.layer] || this.research;
+      try {
+        const result = await layerService.handleMessage(founderId, sub.goal, { ...routing, layer: sub.layer, agentId: sub.agentId });
+        results.push(`**${sub.layer}** (${sub.agentId}): ${result.metadata?.taskId?.substring(0, 8) || 'dispatched'}`);
+      } catch (e) {
+        results.push(`**${sub.layer}** (${sub.agentId}): failed - ${String(e)}`);
+      }
+    }
+
+    await this.activity.logActivity({
+      founderId, type: 'AGENT_STATUS_CHANGE',
+      description: `Multi-step orchestration: ${subTasks.length} tasks dispatched across layers`,
+    });
+
+    return {
+      content: `**Multi-layer orchestration** 🔄\n\nI've broken this into ${subTasks.length} parallel tasks:\n\n${results.join('\n')}\n\nEach task is running independently. Results will appear in the Activity feed.`,
+      agentId: 'global-orchestrator',
+      layer: 'GLOBAL',
+      metadata: { confidence: routing.confidence, reasoning: routing.reasoning, multiStep: true, subTaskCount: subTasks.length },
     };
   }
 
@@ -103,4 +162,3 @@ export class OrchestrationService {
     };
   }
 }
-
