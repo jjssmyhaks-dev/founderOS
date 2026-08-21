@@ -9,8 +9,29 @@ export class RateLimitMiddleware implements NestMiddleware {
   private readonly windowMs = 60 * 1000; // 1 minute
   private readonly maxRequests = 60; // per minute per IP
   private readonly authMaxRequests = 5; // stricter for auth endpoints
+  private lastCleanup = Date.now();
+  private readonly cleanupIntervalMs = 5 * 60 * 1000; // every 5 minutes
+
+  private cleanupStaleEntries() {
+    const now = Date.now();
+    if (now - this.lastCleanup < this.cleanupIntervalMs) return;
+    this.lastCleanup = now;
+
+    let cleaned = 0;
+    for (const [key, record] of this.attempts) {
+      if (now > record.resetAt + this.windowMs) {
+        this.attempts.delete(key);
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      this.logger.debug(`Cleaned ${cleaned} stale rate-limit entries (${this.attempts.size} remaining)`);
+    }
+  }
 
   use(req: Request, res: Response, next: NextFunction) {
+    this.cleanupStaleEntries();
+
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const path = req.path;
     const now = Date.now();

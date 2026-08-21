@@ -1,9 +1,12 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/jwt-auth.decorator';
 import { OnboardingService } from './onboarding.service';
 import { ContextCompletenessService } from './context-completeness.service';
 
+@ApiTags('Onboarding')
+@ApiBearerAuth()
 @Controller('onboarding')
 @UseGuards(JwtAuthGuard)
 export class OnboardingController {
@@ -13,6 +16,7 @@ export class OnboardingController {
   ) {}
 
   @Get('status')
+  @ApiOperation({ summary: 'Check onboarding progress' })
   async getStatus(@CurrentUser('id') founderId: string) {
     const isComplete = await this.onboarding.isOnboardingComplete(founderId);
     const state = await this.onboarding.getOnboardingState(founderId);
@@ -26,6 +30,7 @@ export class OnboardingController {
   }
 
   @Get('completeness')
+  @ApiOperation({ summary: 'Get context completeness score by layer' })
   async getCompleteness(@CurrentUser('id') founderId: string) {
     const layers = await this.completeness.getCompleteness(founderId);
     const overall = await this.completeness.getOverallScore(founderId);
@@ -33,6 +38,7 @@ export class OnboardingController {
   }
 
   @Get('opening')
+  @ApiOperation({ summary: 'Get opening onboarding message' })
   async getOpeningMessage(@CurrentUser('id') founderId: string) {
     const founder = await this.onboarding.getFounderInfo(founderId);
     if (!founder) throw new Error('Founder not found');

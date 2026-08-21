@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { randomUUID } from 'crypto';
@@ -8,7 +9,7 @@ import { Request, Response, NextFunction } from 'express';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Global exception filter with request ID tracking
   app.useGlobalFilters(new GlobalExceptionFilter());
@@ -77,19 +78,37 @@ async function bootstrap() {
     },
   }));
 
+  // Root redirect to Swagger docs
+  app.use('/', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path === '/' && req.method === 'GET') {
+      return res.redirect(302, '/api/docs');
+    }
+    next();
+  });
+
   // Swagger API documentation
   const config = new DocumentBuilder()
     .setTitle('Helm AI OS')
-    .setDescription('AI Operating System for Solo Founders - API Documentation')
+    .setDescription('AI Operating System for Solo Founders — 26 autonomous agents across Research, Marketing, Operations, and Finance layers.')
     .setVersion('0.1.0')
-    .addBearerAuth()
+    .addBearerAuth(
+      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Enter your JWT token' },
+      'default',
+    )
     .addTag('Auth', 'Authentication and user management')
-    .addTag('Chat', 'Chat sessions and messaging')
-    .addTag('Agents', 'Agent management and configuration')
-    .addTag('Tasks', 'Task creation and management')
-    .addTag('Observability', 'Traces, spans, and monitoring')
-    .addTag('Memory', 'Agent memory and context')
-    .addTag('Connectors', 'External service integrations')
+    .addTag('Chat', 'Chat sessions and messaging with agents')
+    .addTag('Agents', 'Agent registry, configuration, and stats')
+    .addTag('Tasks', 'Task creation, status, and management')
+    .addTag('Agent Runtime', 'Execute tasks, approve/reject, view traces')
+    .addTag('Observability', 'Traces, spans, metrics, evaluations, and leaderboard')
+    .addTag('Memory', 'Agent memory read/write and conflict detection')
+    .addTag('Context', 'Business context notes CRUD')
+    .addTag('Connectors', 'External service integrations (MCP)')
+    .addTag('Approvals', 'Tier 3 approval queue management')
+    .addTag('Events', 'Redis pub/sub event bus')
+    .addTag('Activity', 'Agent activity feed')
+    .addTag('Onboarding', 'Founder onboarding flow')
+    .addTag('Health', 'Service health and readiness checks')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);

@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Param, Query, Body, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/jwt-auth.decorator';
 import { TraceService } from './trace.service';
@@ -6,6 +7,8 @@ import { EvalService } from './eval.service';
 import { SpanEmitterService } from './span-emitter.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+@ApiTags('Observability')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('observability')
 export class ObservabilityController {
@@ -17,21 +20,25 @@ export class ObservabilityController {
   ) {}
 
   @Get('traces')
+  @ApiOperation({ summary: 'Query traces with filters' })
   async queryTraces(@CurrentUser('id') founderId: string, @Query('agentId') agentId?: string, @Query('status') status?: string, @Query('from') from?: string, @Query('to') to?: string, @Query('limit') limit?: string) {
     return this.trace.queryTraces({ founderId, agentId, status, from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined, limit: limit ? parseInt(limit) : undefined });
   }
 
   @Get('traces/:traceId')
+  @ApiOperation({ summary: 'Get trace detail with span waterfall' })
   async getTrace(@Param('traceId') traceId: string) {
     return this.trace.getTrace(traceId);
   }
 
   @Get('metrics/agents')
+  @ApiOperation({ summary: 'Get agent performance metrics' })
   async agentMetrics(@Query('agentId') agentId: string, @Query('hours') hours?: string) {
     return this.trace.getAgentMetrics(agentId, hours ? parseInt(hours) : 24);
   }
 
   @Get('metrics/layers')
+  @ApiOperation({ summary: 'Get layer-level metrics (tasks, cost, tokens)' })
   async layerMetrics(@Query('hours') hours?: string) {
     return this.trace.getLayerMetrics(hours ? parseInt(hours) : 24);
   }
@@ -62,11 +69,13 @@ export class ObservabilityController {
   }
 
   @Post('eval/:agentId')
+  @ApiOperation({ summary: 'Run evaluation suite for an agent' })
   async runEval(@Param('agentId') agentId: string, @Body() body: any) {
     return this.evalService.runEval(agentId, body.testSetVersion || 'v1', body.triggeredBy || 'manual');
   }
 
   @Get('eval/history')
+  @ApiOperation({ summary: 'Get evaluation run history' })
   async evalHistory(@Query('agentId') agentId?: string) {
     return this.evalService.getEvalHistory(agentId);
   }
@@ -78,6 +87,7 @@ export class ObservabilityController {
   }
 
   @Get('leaderboard')
+  @ApiOperation({ summary: 'Get agent performance leaderboard (7 days)' })
   async leaderboard(@CurrentUser('id') founderId: string) {
     const since = new Date(Date.now() - 7 * 86400000);
     const spans = await this.prisma.span.findMany({ where: { startedAt: { gte: since }, trace: { founderId } } });

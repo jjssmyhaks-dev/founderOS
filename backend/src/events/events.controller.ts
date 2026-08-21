@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Body, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { EventService } from './events.service';
 import { PublishEventDto } from './dto/events.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -13,11 +13,16 @@ export class EventsController {
   constructor(private readonly eventService: EventService) {}
 
   @Post('publish')
+  @ApiOperation({ summary: 'Publish an event to the event bus' })
+  @ApiResponse({ status: 201, description: 'Event published, triggers subscribed agents' })
   async publish(@Body() dto: PublishEventDto) {
     return this.eventService.publish(dto);
   }
 
   @Get('subscriptions')
+  @ApiOperation({ summary: 'Get event subscriptions' })
+  @ApiQuery({ name: 'agentId', required: false })
+  @ApiResponse({ status: 200, description: 'Active event subscriptions' })
   async getSubscriptions(@Query('agentId') agentId?: string) {
     return this.eventService.getSubscriptions(agentId);
   }

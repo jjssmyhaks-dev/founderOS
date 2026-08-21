@@ -1,12 +1,13 @@
 import { Controller, Post, Get, Param, Body, UseGuards, Request } from '@nestjs/common';
-
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AgentRuntimeService } from './agent-runtime.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
+@ApiTags('Agent Runtime')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('agent-runtime')
-
 export class AgentRuntimeController {
   constructor(
     private runtime: AgentRuntimeService,
@@ -14,6 +15,8 @@ export class AgentRuntimeController {
   ) {}
 
   @Post('execute')
+  @ApiOperation({ summary: 'Execute an agent task' })
+  @ApiResponse({ status: 200, description: 'Task execution result' })
   async execute(@Request() req: any, @Body() body: any) {
     const task = {
       taskId: body.taskId,
@@ -42,11 +45,13 @@ export class AgentRuntimeController {
   }
 
   @Post(':taskId/approve')
+  @ApiOperation({ summary: 'Approve a pending task' })
   async approve(@Param('taskId') taskId: string, @Body() body: any) {
     return this.runtime.resumeAfterApproval(taskId, 'approved');
   }
 
   @Post(':taskId/reject')
+  @ApiOperation({ summary: 'Reject a pending task' })
   async reject(@Param('taskId') taskId: string, @Body() body: any) {
     return this.runtime.resumeAfterApproval(taskId, 'rejected');
   }
@@ -57,6 +62,7 @@ export class AgentRuntimeController {
   }
 
   @Get('tasks/:taskId/steps')
+  @ApiOperation({ summary: 'Get task execution step trace' })
   async getTaskSteps(@Param('taskId') taskId: string) {
     return this.prisma.taskStep.findMany({
       where: { taskId },
@@ -65,6 +71,7 @@ export class AgentRuntimeController {
   }
 
   @Get('tasks/:taskId/trace')
+  @ApiOperation({ summary: 'Get full task trace with steps' })
   async getTaskTrace(@Param('taskId') taskId: string) {
     const task = await this.prisma.task.findUnique({ where: { id: taskId } });
     if (!task) return { error: 'Task not found' };
@@ -88,6 +95,7 @@ export class AgentRuntimeController {
     };
   }
   @Get('stats')
+  @ApiOperation({ summary: 'Get agent runtime performance stats' })
   async getStats() {
     const tasks = await this.prisma.task.findMany({ select: { agentId: true, status: true, currentStep: true, maxSteps: true, startedAt: true, completedAt: true } });
     const grouped: Record<string, any> = {};

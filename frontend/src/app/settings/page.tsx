@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { apiFetch } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import AuthGuard from '@/components/AuthGuard';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { toast } from '@/components/Toast';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 
@@ -23,9 +24,11 @@ const LAYER_TIERS = [
 
 export default function SettingsPage() {
   return (
-    <AuthGuard>
-      <SettingsContent />
-    </AuthGuard>
+    <ErrorBoundary>
+      <AuthGuard>
+        <SettingsContent />
+      </AuthGuard>
+    </ErrorBoundary>
   );
 }
 
