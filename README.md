@@ -26,6 +26,7 @@ Helm is an autonomous AI operating system designed for solo founders. It orchest
      ┌──────▼──────────────▼───────────────▼────────────▼─────┐
      │              Agent Runtime Harness                      │
      │  (execution loop, tool calling, risk gates, memory)     │
+     │  (guardrails, evals, self-improvement, concurrency)     │
      └──────────────────────────┬────────────────────────────┘
                                 │
               ┌─────────────────┼─────────────────┐
@@ -42,10 +43,20 @@ Helm is an autonomous AI operating system designed for solo founders. It orchest
 helm-ai-os/
 ├── backend/                  # NestJS API server
 │   ├── prisma/
-│   │   └── schema.prisma   # 18 tables (PostgreSQL + pgvector)
+│   │   ├── schema.prisma   # 23 tables (PostgreSQL + pgvector)
+│   │   └── init.sql        # Database initialization
 │   └── src/
-│       ├── agents/          # Agent CRUD + 26-agent registry
+│       ├── agents/          # Agent CRUD + 26-agent registry + prompts
 │       ├── agent-runtime/   # Harness: execution loop, tools, risk, memory
+│       │   ├── agentic-harness.service.ts    # Lifecycle, concurrency, priority queue
+│       │   ├── self-improvement.service.ts   # Feedback loops, performance tuning
+│       │   ├── tool-registry.service.ts      # 16 functional tools
+│       │   ├── handoff.service.ts            # Event → task trigger
+│       │   ├── risk-gate.service.ts          # Autonomy settings, spend limits
+│       │   ├── crash-recovery.service.ts     # Failure escalation
+│       │   ├── context-assembler.service.ts  # Token-budgeted context
+│       │   ├── mcp-connector-executor.service.ts # MCP HTTP execution
+│       │   └── scheduled-trigger.service.ts  # Recurring task support
 │       ├── approvals/       # Tier 3 approval queue
 │       ├── auth/            # JWT auth with bcrypt
 │       ├── chat/            # Chat sessions + orchestrator routing
@@ -54,23 +65,29 @@ helm-ai-os/
 │       ├── context/         # Context note CRUD
 │       ├── events/          # Redis Pub/Sub event bus
 │       ├── gateway/         # WebSocket gateway for real-time updates
+│       ├── guardrails/      # Prompt injection, PII redaction, budget caps
+│       ├── health/          # Health check endpoints
 │       ├── layers/          # 4 layer services (research/marketing/ops/finance)
-│       ├── llm/             # Groq (free) + Anthropic fallback with retries
-│       ├── memory/          # 6 memory types, 3 confidence levels, conflict detection
-│       ├── observability/   # Traces, spans, alerting, leaderboard, evals, cost tracking
-│       ├── orchestration/   # Global orchestrator (LLM routing)
+│       ├── llm/             # Groq (primary) + Anthropic fallback with retries
+│       ├── memory/          # 6 memory types, conflict detection, consolidation
+│       ├── observability/   # Traces, spans, alerting, leaderboard, evals
+│       ├── orchestration/   # Global orchestrator (LLM routing + decomposition)
 │       ├── onboarding/      # Conversational 5-question founder setup
 │       ├── prisma/          # Prisma module + service
+│       ├── scheduler/       # Scheduled task execution
 │       └── tasks/           # Task CRUD
 │
 ├── frontend/                 # Next.js 14 (App Router)
 │   └── src/
 │       ├── app/
+│       │   ├── page.tsx     # Feedly-inspired landing page
 │       │   ├── admin/       # Admin dashboard (6 tabs)
-│       │   ├── login/       # Login page route
+│       │   ├── login/       # Login page
 │       │   ├── observability/ # Founder-facing trace viewer
 │       │   └── settings/    # Per-layer autonomy controls
 │       ├── components/      # Chat UI, approvals, connectors, activity feed
+│       │   ├── ChatPane.tsx # Chat with voice input (Web Speech API)
+│       │   └── Login.tsx    # Themed login component
 │       ├── config/          # Agent/connector config data
 │       ├── lib/             # API client, hooks
 │       └── stores/          # Zustand stores (auth, chat, approvals, etc.)
@@ -79,7 +96,8 @@ helm-ai-os/
 │   └── src/
 │       └── index.ts        # Enums, interfaces (TaskStatus, RiskTier, etc.)
 │
-├── docker-compose.yml       # Postgres + Redis
+├── docker-compose.yml       # Postgres + Redis (production-ready)
+├── DEPLOYMENT.md            # Production deployment guide
 └── package.json             # npm workspaces root
 ```
 
@@ -88,12 +106,12 @@ helm-ai-os/
 | Layer | Tech |
 |---|---|
 | Backend | NestJS 10, Prisma 5, PostgreSQL 16 + pgvector, Redis 7 |
-| Frontend | Next.js 14, Tailwind CSS, Zustand, Lucide Icons |
+| Frontend | Next.js 14, Tailwind CSS, Zustand, Lucide Icons, Framer Motion |
 | AI/Types | TypeScript shared enums & interfaces |
 | LLM | Groq (free tier, primary) + Anthropic Claude (fallback) |
 | Auth | JWT with bcrypt password hashing |
 | Real-time | Socket.IO WebSocket gateway |
-| Infra | Docker Compose |
+| Infra | Docker Compose, production deployment ready |
 
 ## 26 Agents
 
@@ -106,7 +124,7 @@ helm-ai-os/
 
 ## 5 Orchestrators
 
-- **Global Orchestrator** — LLM-based intent routing across all layers
+- **Global Orchestrator** — LLM-based intent routing + task decomposition across all layers
 - **Research Layer Orchestrator** — Routes within research agents
 - **Marketing Layer Orchestrator** — Routes within marketing agents
 - **Operations Layer Orchestrator** — Routes within operations agents
@@ -114,53 +132,127 @@ helm-ai-os/
 
 ## Key Features
 
-### Agent Runtime Harness
-- Execution loop with idempotency keys and crash recovery
-- Consecutive failure escalation (3 failures → task fails)
-- Deadline enforcement with automatic task timeout
-- Scheduled trigger support for recurring tasks
-- Tool calling framework with dynamic tool registration
+### 16 Functional Tools
 
-### Risk Tiers
+| Tool | Risk Tier | Description |
+|---|---|---|
+| `query_context` | AUTO | Query the founder's business knowledge base |
+| `write_memory` | AUTO | Save findings, decisions, insights for future reference |
+| `web_search` | AUTO | Search the internet for current data |
+| `analyze_data` | AUTO | LLM-powered analysis on structured data |
+| `read_activity_log` | AUTO | Read what other agents have been doing |
+| `get_task_status` | AUTO | Check task status across the system |
+| `read_documents` | AUTO | Search the founder's document store |
+| `notify_founder` | AUTO | Push urgent notifications with urgency levels |
+| `publish_event` | AUTO | Signal cross-layer events to trigger other agents |
+| `request_approval` | APPROVAL | Ask founder before high-risk actions |
+| `decompose_task` | NOTIFY | Break complex goals into subtasks |
+| `delegate_to_agent` | NOTIFY | Hand off work to a specialist agent |
+| `create_social_post` | APPROVAL | Draft platform-specific social content |
+| `send_email` | APPROVAL | Send emails via connected service |
+| `schedule_action` | APPROVAL | Schedule future or recurring task execution |
+| `create_task` | AUTO | Create a new task in the system |
+
+### Agent Runtime Harness
+
+- **Execution loop** with idempotency keys, crash recovery, and deadline enforcement
+- **Concurrency control** — max 10 global, max 2 per agent (configurable)
+- **Priority queue** — tasks sorted by priority + time
+- **Graceful degradation** — fails queued tasks when system stressed
+- **Post-execution pipeline** — output guardrails → budget recording → auto-eval → self-improvement
+- **Event-driven activation** — Redis events trigger tasks automatically
+
+### Guardrails & Security
+
+| Guardrail | Description |
+|---|---|
+| Prompt injection detection | 15+ patterns: DAN, role hijacking, system prompt extraction, `[INST]` tags |
+| PII redaction | Detects & redacts email, phone, SSN, credit card, Aadhaar, PAN |
+| Output filtering | Blocks API keys, passwords, tokens from agent output |
+| Rate limiting | 30 req/min per agent per founder |
+| Budget enforcement | Daily limits: 100k tokens, 50 tasks, $5 cost per agent |
+| Audit trail | Every security decision logged to `GuardrailAudit` table |
+
+### Evaluation System (LLM-as-Judge)
+
+- **5 dimensions**: accuracy, relevance, completeness, tool usage, safety (0-100 each)
+- **Regression detection** — auto-alerts when score drops >15%
+- **Auto-eval** — 20% of completed tasks automatically evaluated
+- **Test case seeding** — default test suites for 6 key agents
+- **Feedback generation** — LLM generates actionable improvement suggestions
+
+### Self-Improving Agents
+
+- **Learn from failures** — error patterns written to memory
+- **Learn from success** — successful tool sequences recorded
+- **Working memory** — each agent tracks last 20 task outcomes per founder
+- **Memory consolidation** — LLM identifies duplicate/outdated memories and archives them
+- **Performance metrics** — reliability, tool usage stats, improvement notes
+
+### Risk Tiers (Founder-Configurable)
+
 | Tier | Behavior | Examples |
 |---|---|---|
 | AUTO_EXECUTE (Tier 1) | Runs immediately | Research queries, internal analytics |
 | NOTIFY_AND_ACT (Tier 2) | Runs + notifies founder | Content drafts, social posts |
 | APPROVAL_REQUIRED (Tier 3) | Waits for founder approval | Financial transactions, external comms |
 
+**Enhanced with:**
+- Per-layer autonomy settings (founder configurable)
+- External communication detection (email/social always require approval)
+- Destructive action detection (delete/remove/cancel require approval)
+- Spend limit enforcement (amount extracted from tool args)
+- Time restrictions (marketing actions outside business hours restricted)
+- Composite risk scoring (0-100 with factor breakdown)
+
 ### State & Memory
-- 6 memory types: TASK_OUTPUT, DECISION, CONTEXT, CONSTRAINT, USER_PREFERENCE, ERROR
-- 3 confidence levels: HIGH, MEDIUM, LOW
-- LLM-based conflict detection between new and existing memories
-- Supersede chains for memory versioning
-- Constraint → runtime-config bridge for dynamic agent behavior
+
+- **6 memory types**: TASK_OUTPUT, DECISION, CONTEXT, CONSTRAINT, USER_PREFERENCE, ERROR
+- **3 confidence levels**: HIGH, MEDIUM, LOW
+- **LLM-based conflict detection** between new and existing memories
+- **Supersede chains** for memory versioning
+- **Constraint → runtime-config bridge** for dynamic agent behavior
+- **Conversation history** persisted across sessions
 
 ### Observability
-- Full trace/span hierarchy for every agent execution
-- Alerting rules with configurable thresholds
-- Agent performance leaderboard (task count, success rate, avg duration)
-- Eval harness for agent quality measurement
-- Cost tracking per task with token counting
+
+- Full **trace/span hierarchy** for every agent execution
+- **Alerting rules** with configurable thresholds
+- **Agent performance leaderboard** (task count, success rate, avg duration)
+- **Cost tracking** per task with token counting
+- **Request ID tracking** for debugging across services
 
 ### Onboarding
+
 - Conversational 5-question setup flow
 - Context extraction via LLM from founder responses
 - First-action proposal and execution on completion
 - State persisted to database across restarts
 
 ### MCP Connectors
+
 - 15 connector definitions (WhatsApp, Tally, GST, Razorpay, etc.)
 - Health check system with status tracking
 - OAuth credential management
 - Per-founder connector configuration
+- **HTTP execution** through `McpConnectorExecutor` with auth header building
 
-## Security
+### Production Security
 
-- **JWT authentication** with bcrypt password hashing
-- **Founder-scoped data access** — all queries enforce founderId from JWT
-- **Risk-gated execution** — tier 3 actions require explicit approval
-- **Rate limiting** — configurable per-endpoint request throttling
-- **Input validation** — class-validator pipes on all DTOs
+- **Security headers** — X-Frame-Options, CSP, HSTS, X-XSS-Protection
+- **SQL injection prevention** — UUID format validation + parameterized queries
+- **Request ID tracking** — every request gets a UUID for debugging
+- **Error sanitization** — internal errors hidden when `NODE_ENV=production`
+- **Graceful shutdown** — `enableShutdownHooks()` for clean process exit
+- **Structured logging** — method, path, IP, user-agent on errors
+
+### Frontend
+
+- **Feedly-inspired landing page** — hero, pain points, pillars, how-it-works, use cases, timeline, footer
+- **Voice input** — Web Speech API for speech-to-text in chat
+- **Custom 404 page** with theme-consistent styling
+- **Loading states** for route transitions
+- **SEO metadata** — OpenGraph, Twitter cards, viewport, keywords
 
 ## Quick Start
 
@@ -175,7 +267,8 @@ npm install
 ```bash
 cp backend/.env.example backend/.env
 # Edit backend/.env with your DATABASE_URL, REDIS_URL, JWT_SECRET,
-# GROQ_API_KEY (primary), ANTHROPIC_API_KEY (optional fallback)
+# GROQ_API_KEY (primary), ANTHROPIC_API_KEY (optional fallback),
+# SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 ```
 
 3. Setup database:
@@ -237,6 +330,13 @@ npm run dev:frontend    # http://localhost:3000
 | GET | /runtime/tasks/:id/steps | Get task execution trace |
 | GET | /runtime/stats | Agent performance stats |
 
+### Health
+| Method | Path | Description |
+|---|---|---|
+| GET | /health | Full health check (DB, memory, uptime) |
+| GET | /health/ready | Readiness probe |
+| GET | /health/live | Liveness probe |
+
 ### Observability
 | Method | Path | Description |
 |---|---|---|
@@ -281,14 +381,19 @@ npm run dev:frontend    # http://localhost:3000
 
 ## Environment Variables
 
+### Backend
 | Variable | Required | Description |
 |---|---|---|
 | DATABASE_URL | Yes | PostgreSQL connection string |
 | REDIS_URL | Yes | Redis connection string |
-| JWT_SECRET | Yes | Secret key for JWT signing |
+| JWT_SECRET | Yes | Secure random string for JWT signing (min 32 chars) |
 | GROQ_API_KEY | Yes | Groq API key (free tier, primary LLM) |
 | ANTHROPIC_API_KEY | No | Anthropic API key (fallback LLM) |
+| SUPABASE_URL | No | Supabase project URL |
+| SUPABASE_ANON_KEY | No | Supabase anonymous key |
+| SUPABASE_SERVICE_ROLE_KEY | No | Supabase service role key |
 | PORT | No | Backend port (default: 3001) |
+| FRONTEND_URL | No | Frontend URL for CORS (default: http://localhost:3000) |
 
 ### Frontend
 | Variable | Required | Description |
@@ -318,6 +423,10 @@ cd backend && npx tsc --noEmit
 cd frontend && npx tsc --noEmit
 cd ai && npx tsc --noEmit
 ```
+
+## Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the complete production deployment guide including Docker setup, SSL configuration, monitoring, and troubleshooting.
 
 ## License
 
